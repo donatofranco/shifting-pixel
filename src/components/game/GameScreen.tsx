@@ -21,7 +21,7 @@ interface GameScreenProps {
   isLoading: boolean;
   onManualLevelGenerated: (data: GenerateLevelOutput) => void;
   setIsLoadingLevelFromForm: (isLoading: boolean) => void;
-  defaultLevelParams: GenerateLevelInput;
+  defaultLevelParams: Pick<GenerateLevelInput, 'difficulty'>; // Expecting only difficulty
 }
 
 const parseLevelData = (levelDataString: string | undefined): ParsedLevelData | null => {
@@ -163,7 +163,6 @@ const GameScreen: FC<GameScreenProps> = ({
             newLevelRequestedRef.current = false;
             console.log(`GameScreen: New level detected (ID: ${levelId} from prev ${prevLevelIdRef.current}). newLevelRequestedRef reset.`);
         }
-        // Reset timer for new level
         setElapsedTime(0);
         levelStartTimeRef.current = Date.now();
     }
@@ -201,7 +200,7 @@ const GameScreen: FC<GameScreenProps> = ({
         deathSoundRef.current = new Audio('/sounds/death.wav');
         winSoundRef.current = new Audio('/sounds/win.wav');
 
-        if (levelId > 0) { // Start timer if a level is already loaded (e.g. first level)
+        if (levelId > 0) { 
             levelStartTimeRef.current = Date.now();
         }
 
@@ -221,7 +220,7 @@ const GameScreen: FC<GameScreenProps> = ({
       if (deathSoundRef.current) deathSoundRef.current.pause(); deathSoundRef.current = null;
       if (winSoundRef.current) winSoundRef.current.pause(); winSoundRef.current = null;
     };
-  }, []); // Removed levelId dependency here to avoid re-init on level change
+  }, []); 
 
   useEffect(() => {
     const app = pixiAppRef.current;
@@ -359,7 +358,6 @@ const GameScreen: FC<GameScreenProps> = ({
     }
     if (player.sprite) player.sprite.visible = true;
 
-    // Update timer
     if (levelStartTimeRef.current && !isLoading && !isFormPopoverOpen && !isControlsPopoverOpen) {
         const currentTime = (Date.now() - levelStartTimeRef.current) / 1000;
         setElapsedTime(currentTime);
@@ -566,7 +564,7 @@ const GameScreen: FC<GameScreenProps> = ({
         gameContainer.y += (targetY - gameContainer.y) * CAMERA_LERP_FACTOR;
     }
 
-  }, [parsedData, onRequestNewLevel, levelId, isLoading, deathCount, isFormPopoverOpen, isControlsPopoverOpen]); 
+  }, [parsedData, onRequestNewLevel, levelId, isLoading, deathCount, isFormPopoverOpen, isControlsPopoverOpen, elapsedTime]); // Added elapsedTime to dependencies
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -574,7 +572,6 @@ const GameScreen: FC<GameScreenProps> = ({
         keysPressedRef.current.add(event.code);
     }
     const handleKeyUp = (event: KeyboardEvent) => {
-        // Always allow key up to prevent stuck keys if popover opens mid-press
         keysPressedRef.current.delete(event.code);
     }
     window.addEventListener('keydown', handleKeyDown);
@@ -599,7 +596,7 @@ const GameScreen: FC<GameScreenProps> = ({
         console.log(`GameScreen: gameLoop removed from ticker during cleanup for levelId ${levelId}.`);
       }
     };
-  }, [gameLoop, parsedData, levelId, isLoading, isFormPopoverOpen, isControlsPopoverOpen]);
+  }, [gameLoop, parsedData, levelId, isLoading, isFormPopoverOpen, isControlsPopoverOpen]); // gameLoop is a dependency here
 
   const handlePopoverFormSubmit = (data: GenerateLevelOutput) => {
     onManualLevelGenerated(data);
@@ -644,7 +641,7 @@ const GameScreen: FC<GameScreenProps> = ({
                     <LevelGeneratorForm
                         onLevelGenerated={handlePopoverFormSubmit}
                         setIsLoadingLevel={setIsLoadingLevelFromForm}
-                        initialValues={defaultLevelParams}
+                        initialValues={defaultLevelParams} // Pass simplified params
                         onFormSubmitted={() => setIsFormPopoverOpen(false)}
                     />
                 </div>

@@ -12,13 +12,11 @@ import { Button } from '@/components/ui/button';
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -26,27 +24,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'; // Card components might not be needed if used in Popover
+import { CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { handleGenerateLevelAction } from '@/app/actions';
 import type { GenerateLevelInput, GenerateLevelOutput } from '@/ai/flows/generate-level';
 import { Loader2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 
-
+// Simplified form schema, only difficulty
 const formSchema = z.object({
   difficulty: z.enum(['easy', 'medium', 'hard']),
-  levelLength: z.coerce.number().int().min(10).max(200),
-  platformDensity: z.enum(['sparse', 'normal', 'dense']),
-  obstacleDensity: z.enum(['low', 'medium', 'high']),
 });
 
+// Values from this form will only contain difficulty
 type LevelGeneratorFormValues = z.infer<typeof formSchema>;
 
 interface LevelGeneratorFormProps {
   onLevelGenerated: (data: GenerateLevelOutput) => void;
   setIsLoadingLevel: (isLoading: boolean) => void;
-  initialValues?: GenerateLevelInput;
-  onFormSubmitted?: () => void; // Optional: Callback to notify parent when form is submitted
+  initialValues?: Pick<GenerateLevelInput, 'difficulty'>; // Only difficulty needed for initial values
+  onFormSubmitted?: () => void;
 }
 
 const LevelGeneratorForm: FC<LevelGeneratorFormProps> = ({ 
@@ -62,9 +58,6 @@ const LevelGeneratorForm: FC<LevelGeneratorFormProps> = ({
     resolver: zodResolver(formSchema),
     defaultValues: initialValues || {
       difficulty: 'medium',
-      levelLength: 100,
-      platformDensity: 'normal',
-      obstacleDensity: 'medium',
     },
   });
 
@@ -78,7 +71,9 @@ const LevelGeneratorForm: FC<LevelGeneratorFormProps> = ({
     setIsSubmitting(true);
     setIsLoadingLevel(true);
     try {
-      const result = await handleGenerateLevelAction(values as GenerateLevelInput);
+      // The 'values' here only has 'difficulty'.
+      // handleGenerateLevelAction will now derive the other parameters.
+      const result = await handleGenerateLevelAction(values); 
       if ('error' in result) {
         console.error("Generation error:", result.error);
         toast({
@@ -93,7 +88,7 @@ const LevelGeneratorForm: FC<LevelGeneratorFormProps> = ({
           description: "The new level is ready for play.",
         });
         if (onFormSubmitted) {
-            onFormSubmitted(); // Call this to close popover, for example
+            onFormSubmitted();
         }
       }
     } catch (error) {
@@ -109,15 +104,14 @@ const LevelGeneratorForm: FC<LevelGeneratorFormProps> = ({
     }
   };
 
-  // Removed Card wrapper, form will be directly in PopoverContent
   return (
     <>
-      <CardHeader className="p-4 pt-0 pb-2"> {/* Adjusted padding for Popover context */}
+      <CardHeader className="p-4 pt-0 pb-2">
         <CardTitle className="text-accent uppercase text-lg tracking-wider">Level Generator</CardTitle>
       </CardHeader>
-      <CardContent className="p-4 pt-0"> {/* Adjusted padding for Popover context */}
+      <CardContent className="p-4 pt-0">
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4"> {/* Reduced space-y */}
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <FormField
               control={form.control}
               name="difficulty"
@@ -140,69 +134,7 @@ const LevelGeneratorForm: FC<LevelGeneratorFormProps> = ({
                 </FormItem>
               )}
             />
-
-            <FormField
-              control={form.control}
-              name="levelLength"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-foreground/80 text-xs">Length (Platforms)</FormLabel>
-                  <FormControl>
-                    <Input type="number" {...field} className="bg-input border-border focus:ring-ring h-9 text-xs" />
-                  </FormControl>
-                  <FormDescription className="text-muted-foreground text-xs">
-                    Platforms (10-200)
-                  </FormDescription>
-                  <FormMessage className="text-xs"/>
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="platformDensity"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-foreground/80 text-xs">Platform Density</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
-                    <FormControl>
-                      <SelectTrigger className="bg-input border-border focus:ring-ring h-9 text-xs">
-                        <SelectValue placeholder="Select density" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent className="bg-popover border-border">
-                      <SelectItem value="sparse">Sparse</SelectItem>
-                      <SelectItem value="normal">Normal</SelectItem>
-                      <SelectItem value="dense">Dense</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormMessage className="text-xs"/>
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="obstacleDensity"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-foreground/80 text-xs">Obstacle Density</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
-                    <FormControl>
-                      <SelectTrigger className="bg-input border-border focus:ring-ring h-9 text-xs">
-                        <SelectValue placeholder="Select density" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent className="bg-popover border-border">
-                      <SelectItem value="low">Low</SelectItem>
-                      <SelectItem value="medium">Medium</SelectItem>
-                      <SelectItem value="high">High</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormMessage className="text-xs"/>
-                </FormItem>
-              )}
-            />
+            
             <Button type="submit" className="w-full bg-primary hover:bg-primary/90 text-primary-foreground uppercase tracking-wider text-sm py-2 h-9" disabled={isSubmitting}>
               {isSubmitting ? (
                 <>
@@ -210,7 +142,7 @@ const LevelGeneratorForm: FC<LevelGeneratorFormProps> = ({
                   Generating...
                 </>
               ) : (
-                'Generate Manually'
+                'Generate Level'
               )}
             </Button>
           </form>
@@ -221,4 +153,3 @@ const LevelGeneratorForm: FC<LevelGeneratorFormProps> = ({
 };
 
 export default LevelGeneratorForm;
-

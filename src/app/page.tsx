@@ -8,26 +8,25 @@ import GameScreen from '@/components/game/GameScreen';
 import { handleGenerateLevelAction } from '@/app/actions';
 import { useToast } from "@/hooks/use-toast";
 
-const DEFAULT_LEVEL_PARAMS: GenerateLevelInput = {
+// DEFAULT_LEVEL_PARAMS now only needs difficulty for initial/automatic generation
+const DEFAULT_LEVEL_PARAMS: Pick<GenerateLevelInput, 'difficulty'> = {
   difficulty: 'medium',
-  levelLength: 70,
-  platformDensity: 'normal',
-  obstacleDensity: 'medium',
 };
 
 export default function HomePage() {
   const [generatedLevel, setGeneratedLevel] = useState<GenerateLevelOutput | null>(null);
-  const [isLoadingLevel, setIsLoadingLevel] = useState<boolean>(true); // Start true for initial load
+  const [isLoadingLevel, setIsLoadingLevel] = useState<boolean>(true);
   const { toast } = useToast();
   const initialLevelGeneratedRef = useRef(false);
-  const [levelCount, setLevelCount] = useState(0); // 0 means no level generated yet
+  const [levelCount, setLevelCount] = useState(0);
 
-  const triggerLevelGeneration = useCallback(async (params: GenerateLevelInput) => {
+  const triggerLevelGeneration = useCallback(async (params: Pick<GenerateLevelInput, 'difficulty'>) => {
     setIsLoadingLevel(true);
     const isInitialGeneration = levelCount === 0;
     const nextLevelNumber = isInitialGeneration ? 1 : levelCount + 1;
-    console.log(`HomePage: Attempting to generate Level ${nextLevelNumber} with params:`, params);
+    console.log(`HomePage: Attempting to generate Level ${nextLevelNumber} with difficulty:`, params.difficulty);
     try {
+      // handleGenerateLevelAction now expects only difficulty, and derives the rest
       const result = await handleGenerateLevelAction(params);
       if ('error' in result) {
         console.error(`HomePage: Generation failed for Level ${nextLevelNumber}:`, result.error);
@@ -36,7 +35,7 @@ export default function HomePage() {
           title: `Level ${nextLevelNumber} Generation Failed`,
           description: result.error || "An unknown error occurred.",
         });
-        setGeneratedLevel(null); // Explicitly set to null on error
+        setGeneratedLevel(null);
       } else {
         console.log(`HomePage: Level ${nextLevelNumber} generated successfully.`);
         setGeneratedLevel(result);
@@ -53,7 +52,7 @@ export default function HomePage() {
         title: "Error",
         description: `An unexpected error occurred while generating level ${nextLevelNumber}.`,
       });
-      setGeneratedLevel(null); // Explicitly set to null on error
+      setGeneratedLevel(null);
     } finally {
       setIsLoadingLevel(false);
     }
@@ -72,7 +71,7 @@ export default function HomePage() {
     console.log(`HomePage: Manual generation for Level ${newLevelNumber}.`);
     setGeneratedLevel(data);
     setLevelCount(newLevelNumber);
-    setIsLoadingLevel(false);
+    setIsLoadingLevel(false); // Form itself handles loading state, this ensures HomePage knows
     toast({
       title: `Level ${newLevelNumber} Generated Manually!`,
       description: "The new level is ready for play.",
@@ -81,16 +80,14 @@ export default function HomePage() {
 
   const handleRequestNewLevel = useCallback(() => {
     console.log(`HomePage: handleRequestNewLevel called. Current levelCount: ${levelCount}. Requesting Level ${levelCount + 1}.`);
-    triggerLevelGeneration(DEFAULT_LEVEL_PARAMS);
+    triggerLevelGeneration(DEFAULT_LEVEL_PARAMS); // Auto-generates with default difficulty
   }, [triggerLevelGeneration, levelCount]);
 
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground selection:bg-primary selection:text-primary-foreground">
       <SiteHeader title="Shifting Pixel" />
-      {/* Reduced padding on this container div */}
       <div className="flex-grow container mx-auto px-1 py-1 md:px-2 md:py-2">
-        <div className="flex flex-col lg:flex-row gap-6 md:gap-8 h-full"> {/* Added h-full for potential vertical expansion */}
-          {/* Main content area, now a flex column to allow GameScreen to grow */}
+        <div className="flex flex-col lg:flex-row gap-6 md:gap-8 h-full">
           <main className="flex-1 flex flex-col">
             <GameScreen
               levelOutput={generatedLevel}
@@ -98,8 +95,8 @@ export default function HomePage() {
               levelId={levelCount}
               isLoading={isLoadingLevel}
               onManualLevelGenerated={handleManualLevelGeneration}
-              setIsLoadingLevelFromForm={setIsLoadingLevel}
-              defaultLevelParams={DEFAULT_LEVEL_PARAMS}
+              setIsLoadingLevelFromForm={setIsLoadingLevel} // This prop name can be confusing, consider if it's still needed this way
+              defaultLevelParams={DEFAULT_LEVEL_PARAMS} // Pass simplified params
             />
           </main>
         </div>
