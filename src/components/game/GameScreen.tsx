@@ -9,7 +9,7 @@ import type { ParsedLevelData, Platform as PlatformData } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from '@/components/ui/dialog';
-import { Loader2, SlidersHorizontal, Gamepad2, TimerIcon, PauseIcon, PlayIcon } from 'lucide-react';
+import { Loader2, TimerIcon, PauseIcon, PlayIcon } from 'lucide-react';
 import LevelGeneratorForm from '@/components/game/LevelGeneratorForm';
 import ControlsGuide from '@/components/game/ControlsGuide';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -35,7 +35,7 @@ const parseLevelData = (levelDataString: string | undefined): ParsedLevelData | 
     if (!trimmedData) return null; // Handle case where trim results in empty string
     const data = JSON.parse(trimmedData);
     if (!data.platforms || !Array.isArray(data.platforms)) data.platforms = [];
-    data.obstacles = []; // Obstacles are not rendered as per previous request
+    data.obstacles = []; 
     return data as ParsedLevelData;
   } catch (error) {
     console.error("Failed to parse level data for GameScreen:", error, "Data string:", levelDataString);
@@ -51,20 +51,20 @@ const JUMP_FORCE = 7;
 const GRAVITY = 0.3;
 const DEFAULT_PLATFORM_HEIGHT = 10;
 
-const PLATFORM_COLOR_STANDARD = 0x9400D3; // Vibrant Purple
-const PLATFORM_COLOR_MOBILE = 0x0077FF; // Blue
-const PLATFORM_COLOR_VERTICAL_MOBILE = 0x00D377; // Greenish-blue
-const PLATFORM_COLOR_TIMED = 0xFF8C00; // Orange
-const PLATFORM_COLOR_BREAKABLE = 0x8B4513; // Brown
+const PLATFORM_COLOR_STANDARD = 0x9400D3; 
+const PLATFORM_COLOR_MOBILE = 0x0077FF; 
+const PLATFORM_COLOR_VERTICAL_MOBILE = 0x00D377; 
+const PLATFORM_COLOR_TIMED = 0xFF8C00; 
+const PLATFORM_COLOR_BREAKABLE = 0x8B4513; 
 
-const PLAYER_COLOR = 0xFFDE00; // Yellow
+const PLAYER_COLOR = 0xFFDE00; 
 
 const DEFAULT_PLATFORM_MOVE_SPEED = 0.5;
 const DEFAULT_PLATFORM_MOVE_RANGE = 50;
-const TIMED_PLATFORM_VISIBLE_DURATION = 3 * 60; // 3 seconds at 60fps
-const TIMED_PLATFORM_HIDDEN_DURATION = 2 * 60;  // 2 seconds at 60fps
-const BREAKABLE_PLATFORM_BREAK_DELAY = 0.5 * 60; // 0.5 seconds at 60fps
-const BREAKABLE_PLATFORM_RESPAWN_DURATION = 5 * 60; // 5 seconds at 60fps
+const TIMED_PLATFORM_VISIBLE_DURATION = 3 * 60; 
+const TIMED_PLATFORM_HIDDEN_DURATION = 2 * 60;  
+const BREAKABLE_PLATFORM_BREAK_DELAY = 0.5 * 60; 
+const BREAKABLE_PLATFORM_RESPAWN_DURATION = 5 * 60; 
 
 const CAMERA_LERP_FACTOR = 0.1;
 const DESIRED_GAME_SCALE = 2.5;
@@ -198,7 +198,7 @@ const GameScreen: FC<GameScreenProps> = ({
       return;
     }
 
-    if (pixiAppRef.current) return; // Already initialized for this game session
+    if (pixiAppRef.current) return; 
 
 
     if (PIXI.TextureSource && PIXI.SCALE_MODES) {
@@ -554,7 +554,7 @@ const GameScreen: FC<GameScreenProps> = ({
     player.sprite.x = player.x; player.sprite.y = player.y;
     player.sprite.clear(); player.sprite.rect(0, 0, player.width, player.height).fill(PLAYER_COLOR);
 
-    let gameWorldMaxY = 1000;
+    let gameWorldMaxY = 1000; 
     if (parsedData && parsedData.platforms.length > 0) {
          gameWorldMaxY = Math.max(...parsedData.platforms.map(p => p.y + DEFAULT_PLATFORM_HEIGHT)) + 200;
     }
@@ -624,7 +624,7 @@ const GameScreen: FC<GameScreenProps> = ({
 
   const handleManualGenerateFromPauseMenu = async (formData: Pick<GenerateLevelInput, 'difficulty'>) => {
     await onManualGenerateRequested(formData);
-    setIsPaused(false); // Close the pause menu after initiating generation
+    setIsPaused(false); 
   };
 
 
@@ -695,15 +695,15 @@ const GameScreen: FC<GameScreenProps> = ({
                     <DialogHeader>
                         <DialogTitle className="text-2xl text-primary uppercase tracking-wider text-center mb-4">Paused</DialogTitle>
                     </DialogHeader>
-                    <div className="grid gap-6 py-4">
-                        <div className="border p-4 rounded-md border-border bg-background/30">
+                    <div className="grid gap-4 py-4"> {/* Reduced gap from gap-6 */}
+                        <div className="border p-3 rounded-md border-border bg-background/30"> {/* Reduced padding from p-4 */}
                              <LevelGeneratorForm
                                 onGenerateRequested={handleManualGenerateFromPauseMenu}
                                 initialValues={defaultLevelParams}
-                                onFormSubmitted={() => setIsPaused(false)} // This will be called by the form
+                                onFormSubmitted={() => setIsPaused(false)} 
                             />
                         </div>
-                        <div className="border p-4 rounded-md border-border bg-background/30 max-h-[200px] overflow-y-auto">
+                        <div className="border p-3 rounded-md border-border bg-background/30"> {/* Reduced padding, removed max-h and overflow */}
                             <ControlsGuide />
                         </div>
                     </div>
@@ -739,7 +739,7 @@ const GameScreen: FC<GameScreenProps> = ({
                           <p className="text-lg">Generating Level {levelId + 1}...</p>
                       </>
                   ) : (
-                      <p className="text-lg">Loading...</p>
+                      <p className="text-lg">Loading...</p> // Fallback, should ideally not be hit if gameStarted logic is sound
                   )
               )}
             </div>
@@ -751,3 +751,4 @@ const GameScreen: FC<GameScreenProps> = ({
 };
 
 export default GameScreen;
+
