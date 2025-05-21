@@ -13,7 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 
 const DEFAULT_LEVEL_PARAMS: GenerateLevelInput = {
   difficulty: 'medium',
-  levelLength: 70, // Shorter for quicker testing of end-level trigger
+  levelLength: 70,
   platformDensity: 'normal',
   obstacleDensity: 'medium',
 };
@@ -23,6 +23,7 @@ export default function HomePage() {
   const [isLoadingLevel, setIsLoadingLevel] = useState<boolean>(false);
   const { toast } = useToast();
   const initialLevelGeneratedRef = useRef(false);
+  const [levelCount, setLevelCount] = useState(0); // Contador de niveles
 
   const triggerLevelGeneration = useCallback(async (params: GenerateLevelInput) => {
     setIsLoadingLevel(true);
@@ -35,11 +36,12 @@ export default function HomePage() {
           title: "Level Generation Failed",
           description: result.error || "An unknown error occurred.",
         });
-        setGeneratedLevel(null); // Clear previous level on error
+        setGeneratedLevel(null);
       } else {
         setGeneratedLevel(result);
+        setLevelCount(prevCount => prevCount + 1); // Incrementar contador de nivel
         toast({
-          title: "New Level Generated!",
+          title: `Level ${levelCount + 1} Generated!`,
           description: "The adventure continues.",
         });
       }
@@ -54,17 +56,23 @@ export default function HomePage() {
     } finally {
       setIsLoadingLevel(false);
     }
-  }, [toast]);
+  }, [toast, levelCount]); // Añadir levelCount a las dependencias para que el toast muestre el número correcto
 
   useEffect(() => {
     if (!initialLevelGeneratedRef.current) {
       initialLevelGeneratedRef.current = true;
+      // La primera generación se cuenta como nivel 1
       triggerLevelGeneration(DEFAULT_LEVEL_PARAMS);
     }
   }, [triggerLevelGeneration]);
 
   const handleManualLevelGeneration = (data: GenerateLevelOutput) => {
     setGeneratedLevel(data);
+    setLevelCount(prevCount => prevCount + 1); // También contar niveles generados manualmente
+     toast({
+      title: `Level ${levelCount +1} Generated Manually!`,
+      description: "The new level is ready for preview.",
+    });
   };
 
   const handleRequestNewLevel = useCallback(() => {
@@ -88,7 +96,11 @@ export default function HomePage() {
 
           {/* Right Column / Game Area */}
           <main className="flex-1 space-y-6 md:space-y-8">
-            <GameScreen levelOutput={generatedLevel} onRequestNewLevel={handleRequestNewLevel} />
+            <GameScreen
+              levelOutput={generatedLevel}
+              onRequestNewLevel={handleRequestNewLevel}
+              levelId={levelCount} // Pasar el levelId
+            />
             <LevelPreview levelOutput={generatedLevel} isLoading={isLoadingLevel} />
           </main>
         </div>
