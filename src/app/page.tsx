@@ -5,7 +5,6 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import type { GenerateLevelOutput, GenerateLevelInput } from '@/ai/flows/generate-level';
 import SiteHeader from '@/components/layout/SiteHeader';
 import GameScreen from '@/components/game/GameScreen';
-// LevelPreview and ControlsGuide imports are already removed
 import { handleGenerateLevelAction } from '@/app/actions';
 import { useToast } from "@/hooks/use-toast";
 
@@ -88,12 +87,11 @@ export default function HomePage() {
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground selection:bg-primary selection:text-primary-foreground">
       <SiteHeader title="Shifting Pixel" />
-      <div className="flex-grow container mx-auto px-2 py-4 md:px-4 md:py-8">
-        <div className="flex flex-col lg:flex-row gap-6 md:gap-8">
-          {/* The aside element previously here has been removed */}
-
-          {/* Game Area */}
-          <main className="flex-1 space-y-6 md:space-y-8">
+      {/* Reduced padding on this container div */}
+      <div className="flex-grow container mx-auto px-1 py-1 md:px-2 md:py-2">
+        <div className="flex flex-col lg:flex-row gap-6 md:gap-8 h-full"> {/* Added h-full for potential vertical expansion */}
+          {/* Main content area, now a flex column to allow GameScreen to grow */}
+          <main className="flex-1 flex flex-col">
             <GameScreen
               levelOutput={generatedLevel}
               onRequestNewLevel={handleRequestNewLevel}

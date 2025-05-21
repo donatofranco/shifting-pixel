@@ -9,7 +9,7 @@ import type { ParsedLevelData, Platform as PlatformData } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Loader2, SlidersHorizontal, Gamepad2 } from 'lucide-react'; // Added Gamepad2
+import { Loader2, SlidersHorizontal, Gamepad2 } from 'lucide-react';
 import LevelGeneratorForm from '@/components/game/LevelGeneratorForm';
 import ControlsGuide from '@/components/game/ControlsGuide';
 
@@ -151,7 +151,7 @@ const GameScreen: FC<GameScreenProps> = ({
   useEffect(() => {
     console.log(`GameScreen: useEffect for levelId. Current levelId: ${levelId}, prevLevelIdRef: ${prevLevelIdRef.current}`);
     if (levelId !== undefined && levelId > 0 && prevLevelIdRef.current !== levelId) {
-        if (prevLevelIdRef.current !== undefined) { 
+        if (prevLevelIdRef.current !== undefined && !(prevLevelIdRef.current === 0 && levelId ===1) ) { 
             newLevelRequestedRef.current = false;
             console.log(`GameScreen: New level detected (ID: ${levelId} from prev ${prevLevelIdRef.current}). newLevelRequestedRef reset.`);
         }
@@ -444,17 +444,14 @@ const GameScreen: FC<GameScreenProps> = ({
     if (!player.onGround) player.vy += GRAVITY;
     else { if (player.vy > 0) player.vy = 0; } // Stop downward movement if on ground
 
-    // Horizontal collision
     const prevPlayerX = player.x; player.x += player.vx;
-    // Vertical collision is handled after applying gravity and jump force
-
     const prevPlayerY = player.y; player.y += player.vy;
 
-    player.onGround = false; // Assume not on ground until collision detection proves otherwise
-    if (player.standingOnPlatform) { // Check if the platform player was standing on still exists/is valid
+    player.onGround = false; 
+    if (player.standingOnPlatform) { 
         const p = player.standingOnPlatform;
         if ((p.type === 'timed' && !p.isVisible) || (p.type === 'breakable' && p.isBroken)) {
-            player.standingOnPlatform = null; // Platform disappeared
+            player.standingOnPlatform = null; 
         }
     }
 
@@ -467,45 +464,42 @@ const GameScreen: FC<GameScreenProps> = ({
     // Horizontal collision resolution
     for (const pObj of collidablePlatforms) {
         const pRect = { x: pObj.sprite.x, y: pObj.sprite.y, width: pObj.width, height: pObj.height };
-        const playerHRect = { x: player.x, y: prevPlayerY, width: player.width, height: player.height }; // Use y before vertical movement for horizontal check
+        const playerHRect = { x: player.x, y: prevPlayerY, width: player.width, height: player.height }; 
         if (checkCollision(playerHRect, pRect)) {
-            if (player.vx > 0) player.x = pRect.x - player.width; // Moving right
-            else if (player.vx < 0) player.x = pRect.x + pRect.width; // Moving left
-            player.vx = 0; // Stop horizontal movement
+            if (player.vx > 0) player.x = pRect.x - player.width; 
+            else if (player.vx < 0) player.x = pRect.x + pRect.width; 
+            player.vx = 0; 
         }
     }
 
     // Vertical collision resolution
     for (const pObj of collidablePlatforms) {
         const pRect = { x: pObj.sprite.x, y: pObj.sprite.y, width: pObj.width, height: pObj.height };
-        const playerVRect = { x: player.x, y: player.y, width: player.width, height: player.height }; // Use x after horizontal collision resolution
+        const playerVRect = { x: player.x, y: player.y, width: player.width, height: player.height }; 
         if (checkCollision(playerVRect, pRect)) {
-            if (player.vy > 0) { // Moving down (falling or landing)
-                // Ensure player was above or at the platform's top edge in the previous frame
-                if (prevPlayerY + player.height <= pRect.y + 1) { // +1 for a small tolerance
+            if (player.vy > 0) { 
+                if (prevPlayerY + player.height <= pRect.y + 1) { 
                     player.y = pRect.y - player.height; player.vy = 0; player.isJumping = false; player.onGround = true;
                     player.standingOnPlatform = pObj;
                     if (pObj.type === 'breakable' && !pObj.isBroken && !pObj.isBreaking) {
                         pObj.isBreaking = true; pObj.breakingTimer = BREAKABLE_PLATFORM_BREAK_DELAY;
                     }
                 }
-            } else if (player.vy < 0) { // Moving up (jumping)
-                 // Ensure player was below or at the platform's bottom edge in the previous frame
-                if (prevPlayerY >= pRect.y + pRect.height - 1) { // -1 for a small tolerance
-                    player.y = pRect.y + pRect.height; player.vy = 0; // Bonk head
+            } else if (player.vy < 0) { 
+                if (prevPlayerY >= pRect.y + pRect.height - 1) { 
+                    player.y = pRect.y + pRect.height; player.vy = 0; 
                 }
             }
         }
     }
 
-    // Re-check if still on a platform if onGround was set to false due to platform disappearing
     if (!player.onGround && player.standingOnPlatform) {
         let stillOn = false; const p = player.standingOnPlatform;
         if (!((p.type === 'timed' && !p.isVisible) || (p.type === 'breakable' && p.isBroken))) {
              const pRect = { x: p.sprite.x, y: p.sprite.y, width: p.width, height: p.height };
              const pFeetY = player.y + player.height;
              if (player.x + player.width > pRect.x && player.x < pRect.x + pRect.width &&
-                 pFeetY >= pRect.y && pFeetY < pRect.y + Math.abs(player.vy) + GRAVITY + 1) { // Check within a small vertical window
+                 pFeetY >= pRect.y && pFeetY < pRect.y + Math.abs(player.vy) + GRAVITY + 1) { 
                  player.y = pRect.y - player.height; player.vy = 0; player.isJumping = false;
                  player.onGround = true; stillOn = true;
              }
@@ -518,20 +512,20 @@ const GameScreen: FC<GameScreenProps> = ({
 
     let gameWorldMaxY = 1000; 
     if (parsedData && parsedData.platforms.length > 0) {
-         gameWorldMaxY = Math.max(...parsedData.platforms.map(p => p.y + DEFAULT_PLATFORM_HEIGHT)) + 200; // Fall boundary
+         gameWorldMaxY = Math.max(...parsedData.platforms.map(p => p.y + DEFAULT_PLATFORM_HEIGHT)) + 200; 
     }
-    if (player.y > gameWorldMaxY) { // Player fell off
+    if (player.y > gameWorldMaxY) { 
         console.log(`GameScreen: Player fell off map at level ${levelId}. Deaths: ${deathCount + 1}`);
         if (deathSoundRef.current) { deathSoundRef.current.currentTime = 0; deathSoundRef.current.play().catch(e => console.warn("Death sound err:", e)); }
         setDeathCount(prev => prev + 1);
-        // Reset player position
+        
         if (platformObjectsRef.current.length > 0) {
             const respawnP = platformObjectsRef.current.find(p => p.type === 'standard' || !p.type) || platformObjectsRef.current[0];
             player.x = respawnP.sprite.x + respawnP.width / 2 - player.width / 2;
-            player.y = respawnP.sprite.y - PLAYER_HEIGHT; // Reset to full height
-        } else { player.x = 50; player.y = 100; } // Fallback if no platforms
+            player.y = respawnP.sprite.y - PLAYER_HEIGHT; 
+        } else { player.x = 50; player.y = 100; } 
         player.vy = 0; player.isJumping = false; player.onGround = false; player.standingOnPlatform = null;
-        player.height = PLAYER_HEIGHT; player.isCrouching = false; // Ensure player is not crouching
+        player.height = PLAYER_HEIGHT; player.isCrouching = false; 
     }
 
     if (lastPlatformRef.current && player.standingOnPlatform === lastPlatformRef.current && player.onGround && 
@@ -539,7 +533,7 @@ const GameScreen: FC<GameScreenProps> = ({
       if (winSoundRef.current) { winSoundRef.current.currentTime = 0; winSoundRef.current.play().catch(e => console.warn("Win sound err:", e)); }
       newLevelRequestedRef.current = true; 
       console.log(`GameScreen: Calling onRequestNewLevel() for level ${levelId}.`);
-      onRequestNewLevel(); 
+      if (onRequestNewLevel) onRequestNewLevel(); 
     }
 
     if (app && gameContainer) {
@@ -552,11 +546,11 @@ const GameScreen: FC<GameScreenProps> = ({
         gameContainer.y += (targetY - gameContainer.y) * CAMERA_LERP_FACTOR;
     }
 
-  }, [parsedData, onRequestNewLevel, levelId, isLoading, deathCount]); 
+  }, [parsedData, onRequestNewLevel, levelId, isLoading, deathCount, isFormPopoverOpen, isControlsPopoverOpen]); 
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-        if (isFormPopoverOpen || isControlsPopoverOpen) return; // Ignore game controls if any popover is open
+        if (isFormPopoverOpen || isControlsPopoverOpen) return; 
         keysPressedRef.current.add(event.code);
     }
     const handleKeyUp = (event: KeyboardEvent) => {
@@ -589,12 +583,12 @@ const GameScreen: FC<GameScreenProps> = ({
 
   const handlePopoverFormSubmit = (data: GenerateLevelOutput) => {
     onManualLevelGenerated(data);
-    setIsFormPopoverOpen(false); // Close popover on submit
+    setIsFormPopoverOpen(false); 
   };
 
 
   return (
-    <Card className="border-primary shadow-lg bg-card/80 backdrop-blur-sm h-[400px] md:h-[500px] flex flex-col">
+    <Card className="border-primary shadow-lg bg-card/80 backdrop-blur-sm flex-grow flex flex-col">
       <CardHeader className="flex flex-row items-center justify-between p-4">
         <CardTitle className="text-primary uppercase text-lg md:text-xl tracking-wider">
           Level {levelId != null && levelId > 0 ? levelId : 'Loading...'} - Deaths: {deathCount}
@@ -620,7 +614,6 @@ const GameScreen: FC<GameScreenProps> = ({
                 </Button>
             </PopoverTrigger>
             <PopoverContent className="w-80 z-50 bg-card border-accent shadow-lg p-0">
-                {/* Wrapping form in a div with padding, as PopoverContent p-0 is used for edge-to-edge styling */}
                 <div className="p-4">
                     <LevelGeneratorForm
                         onLevelGenerated={handlePopoverFormSubmit}
