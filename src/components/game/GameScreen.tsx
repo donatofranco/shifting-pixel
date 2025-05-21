@@ -9,8 +9,9 @@ import type { ParsedLevelData, Platform as PlatformData } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Loader2, SlidersHorizontal } from 'lucide-react';
+import { Loader2, SlidersHorizontal, Gamepad2 } from 'lucide-react'; // Added Gamepad2
 import LevelGeneratorForm from '@/components/game/LevelGeneratorForm';
+import ControlsGuide from '@/components/game/ControlsGuide';
 
 
 interface GameScreenProps {
@@ -110,6 +111,8 @@ const GameScreen: FC<GameScreenProps> = ({
   const gameContainerRef = useRef<PIXI.Container | null>(null);
   const [deathCount, setDeathCount] = useState<number>(0);
   const [isFormPopoverOpen, setIsFormPopoverOpen] = useState<boolean>(false);
+  const [isControlsPopoverOpen, setIsControlsPopoverOpen] = useState<boolean>(false);
+
 
   const jumpSoundRef = useRef<HTMLAudioElement | null>(null);
   const deathSoundRef = useRef<HTMLAudioElement | null>(null);
@@ -518,9 +521,9 @@ const GameScreen: FC<GameScreenProps> = ({
          gameWorldMaxY = Math.max(...parsedData.platforms.map(p => p.y + DEFAULT_PLATFORM_HEIGHT)) + 200; // Fall boundary
     }
     if (player.y > gameWorldMaxY) { // Player fell off
-        console.log(`GameScreen: Player fell off map at level ${levelId}.`);
-        setDeathCount(prev => prev + 1);
+        console.log(`GameScreen: Player fell off map at level ${levelId}. Deaths: ${deathCount + 1}`);
         if (deathSoundRef.current) { deathSoundRef.current.currentTime = 0; deathSoundRef.current.play().catch(e => console.warn("Death sound err:", e)); }
+        setDeathCount(prev => prev + 1);
         // Reset player position
         if (platformObjectsRef.current.length > 0) {
             const respawnP = platformObjectsRef.current.find(p => p.type === 'standard' || !p.type) || platformObjectsRef.current[0];
@@ -549,15 +552,15 @@ const GameScreen: FC<GameScreenProps> = ({
         gameContainer.y += (targetY - gameContainer.y) * CAMERA_LERP_FACTOR;
     }
 
-  }, [parsedData, onRequestNewLevel, levelId, isLoading]); 
+  }, [parsedData, onRequestNewLevel, levelId, isLoading, deathCount]); 
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-        if (isFormPopoverOpen) return; // Ignore game controls if form is open
+        if (isFormPopoverOpen || isControlsPopoverOpen) return; // Ignore game controls if any popover is open
         keysPressedRef.current.add(event.code);
     }
     const handleKeyUp = (event: KeyboardEvent) => {
-        if (isFormPopoverOpen) return;
+        if (isFormPopoverOpen || isControlsPopoverOpen) return;
         keysPressedRef.current.delete(event.code);
     }
     window.addEventListener('keydown', handleKeyDown);
@@ -566,11 +569,11 @@ const GameScreen: FC<GameScreenProps> = ({
     const app = pixiAppRef.current;
     if (app && app.ticker) {
       app.ticker.remove(gameLoop); 
-      if (!isLoading && !isFormPopoverOpen) { 
+      if (!isLoading && !isFormPopoverOpen && !isControlsPopoverOpen) { 
         app.ticker.add(gameLoop);
-        console.log(`GameScreen: gameLoop added to ticker for levelId ${levelId}. isLoading: ${isLoading}, isFormPopoverOpen: ${isFormPopoverOpen}`);
+        console.log(`GameScreen: gameLoop added to ticker for levelId ${levelId}. isLoading: ${isLoading}, isFormPopoverOpen: ${isFormPopoverOpen}, isControlsPopoverOpen: ${isControlsPopoverOpen}`);
       } else {
-        console.log(`GameScreen: gameLoop NOT added to ticker for levelId ${levelId} (isLoading: ${isLoading}, isFormPopoverOpen: ${isFormPopoverOpen}).`);
+        console.log(`GameScreen: gameLoop NOT added to ticker for levelId ${levelId} (isLoading: ${isLoading}, isFormPopoverOpen: ${isFormPopoverOpen}, isControlsPopoverOpen: ${isControlsPopoverOpen}).`);
       }
     }
 
@@ -582,7 +585,7 @@ const GameScreen: FC<GameScreenProps> = ({
         console.log(`GameScreen: gameLoop removed from ticker during cleanup for levelId ${levelId}.`);
       }
     };
-  }, [gameLoop, parsedData, levelId, isLoading, isFormPopoverOpen]);
+  }, [gameLoop, parsedData, levelId, isLoading, isFormPopoverOpen, isControlsPopoverOpen]);
 
   const handlePopoverFormSubmit = (data: GenerateLevelOutput) => {
     onManualLevelGenerated(data);
@@ -592,29 +595,43 @@ const GameScreen: FC<GameScreenProps> = ({
 
   return (
     <Card className="border-primary shadow-lg bg-card/80 backdrop-blur-sm h-[400px] md:h-[500px] flex flex-col">
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle className="text-primary uppercase text-xl tracking-wider">
+      <CardHeader className="flex flex-row items-center justify-between p-4">
+        <CardTitle className="text-primary uppercase text-lg md:text-xl tracking-wider">
           Level {levelId != null && levelId > 0 ? levelId : 'Loading...'} - Deaths: {deathCount}
         </CardTitle>
-        <Popover open={isFormPopoverOpen} onOpenChange={setIsFormPopoverOpen}>
-          <PopoverTrigger asChild>
-            <Button variant="ghost" size="icon" className="text-primary hover:text-primary/80">
-              <SlidersHorizontal className="h-5 w-5" />
-              <span className="sr-only">Level Generator</span>
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-80 z-50 bg-card border-accent shadow-lg p-0">
-             {/* Wrapping form in a div with padding, as PopoverContent p-0 is used for edge-to-edge styling */}
-            <div className="p-4">
-                <LevelGeneratorForm
-                    onLevelGenerated={handlePopoverFormSubmit}
-                    setIsLoadingLevel={setIsLoadingLevelFromForm}
-                    initialValues={defaultLevelParams}
-                    onFormSubmitted={() => setIsFormPopoverOpen(false)} // Add this to close on submit
-                />
-            </div>
-          </PopoverContent>
-        </Popover>
+        <div className="flex items-center gap-1">
+            <Popover open={isControlsPopoverOpen} onOpenChange={setIsControlsPopoverOpen}>
+                <PopoverTrigger asChild>
+                    <Button variant="ghost" size="icon" className="text-primary hover:text-primary/80">
+                        <Gamepad2 className="h-5 w-5" />
+                        <span className="sr-only">Controls Guide</span>
+                    </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80 z-50 bg-card border-accent shadow-lg p-0">
+                    <ControlsGuide />
+                </PopoverContent>
+            </Popover>
+
+            <Popover open={isFormPopoverOpen} onOpenChange={setIsFormPopoverOpen}>
+            <PopoverTrigger asChild>
+                <Button variant="ghost" size="icon" className="text-primary hover:text-primary/80">
+                <SlidersHorizontal className="h-5 w-5" />
+                <span className="sr-only">Level Generator</span>
+                </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-80 z-50 bg-card border-accent shadow-lg p-0">
+                {/* Wrapping form in a div with padding, as PopoverContent p-0 is used for edge-to-edge styling */}
+                <div className="p-4">
+                    <LevelGeneratorForm
+                        onLevelGenerated={handlePopoverFormSubmit}
+                        setIsLoadingLevel={setIsLoadingLevelFromForm}
+                        initialValues={defaultLevelParams}
+                        onFormSubmitted={() => setIsFormPopoverOpen(false)}
+                    />
+                </div>
+            </PopoverContent>
+            </Popover>
+        </div>
       </CardHeader>
       <CardContent className="flex-grow p-0 m-0 relative overflow-hidden">
         <div

@@ -4,9 +4,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { GenerateLevelOutput, GenerateLevelInput } from '@/ai/flows/generate-level';
 import SiteHeader from '@/components/layout/SiteHeader';
-// LevelGeneratorForm import removed
 import GameScreen from '@/components/game/GameScreen';
-import ControlsGuide from '@/components/game/ControlsGuide';
+// ControlsGuide import removed
 import { handleGenerateLevelAction } from '@/app/actions';
 import { useToast } from "@/hooks/use-toast";
 
@@ -91,9 +90,9 @@ export default function HomePage() {
       <SiteHeader title="Shifting Pixel" />
       <div className="flex-grow container mx-auto px-2 py-4 md:px-4 md:py-8">
         <div className="flex flex-col lg:flex-row gap-6 md:gap-8">
-          {/* Left Column / Control Panel - Now only contains ControlsGuide */}
+          {/* Left Column / Control Panel - Now empty or can be removed */}
           <aside className="w-full lg:w-1/3 xl:w-1/4 space-y-6 md:space-y-8">
-            <ControlsGuide />
+            {/* ControlsGuide was here */}
           </aside>
 
           {/* Right Column / Game Area */}
