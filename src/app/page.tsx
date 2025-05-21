@@ -23,61 +23,67 @@ export default function HomePage() {
   const [isLoadingLevel, setIsLoadingLevel] = useState<boolean>(false);
   const { toast } = useToast();
   const initialLevelGeneratedRef = useRef(false);
-  const [levelCount, setLevelCount] = useState(0); // Contador de niveles
+  const [levelCount, setLevelCount] = useState(0); // Contador de niveles (0 significa que ningún nivel se ha generado aún)
 
   const triggerLevelGeneration = useCallback(async (params: GenerateLevelInput) => {
     setIsLoadingLevel(true);
+    const nextLevelNumber = levelCount + 1; // Calculate next level number before async operation
+    console.log(`HomePage: Attempting to generate Level ${nextLevelNumber} with params:`, params);
     try {
       const result = await handleGenerateLevelAction(params);
       if ('error' in result) {
-        console.error("Generation error:", result.error);
+        console.error(`HomePage: Generation failed for Level ${nextLevelNumber}:`, result.error);
         toast({
           variant: "destructive",
-          title: "Level Generation Failed",
+          title: `Level ${nextLevelNumber} Generation Failed`,
           description: result.error || "An unknown error occurred.",
         });
-        setGeneratedLevel(null);
+        setGeneratedLevel(null); // Clear level data on error
       } else {
+        console.log(`HomePage: Level ${nextLevelNumber} generated successfully.`);
         setGeneratedLevel(result);
-        setLevelCount(prevCount => prevCount + 1); // Incrementar contador de nivel
+        setLevelCount(nextLevelNumber); // Update levelCount to the new level number
         toast({
-          title: `Level ${levelCount + 1} Generated!`,
+          title: `Level ${nextLevelNumber} Generated!`,
           description: "The adventure continues.",
         });
       }
     } catch (error) {
-      console.error("Unexpected error generating level:", error);
+      console.error(`HomePage: Unexpected error generating Level ${nextLevelNumber}:`, error);
       toast({
         variant: "destructive",
         title: "Error",
-        description: "An unexpected error occurred while generating the level.",
+        description: `An unexpected error occurred while generating level ${nextLevelNumber}.`,
       });
       setGeneratedLevel(null);
     } finally {
       setIsLoadingLevel(false);
     }
-  }, [toast, levelCount]); // Añadir levelCount a las dependencias para que el toast muestre el número correcto
+  }, [toast, levelCount]); // levelCount is a dependency, so this callback is fresh.
 
   useEffect(() => {
     if (!initialLevelGeneratedRef.current) {
       initialLevelGeneratedRef.current = true;
-      // La primera generación se cuenta como nivel 1
-      triggerLevelGeneration(DEFAULT_LEVEL_PARAMS);
+      console.log("HomePage: Initial level generation triggered.");
+      triggerLevelGeneration(DEFAULT_LEVEL_PARAMS); // Generates Level 1
     }
   }, [triggerLevelGeneration]);
 
-  const handleManualLevelGeneration = (data: GenerateLevelOutput) => {
+  const handleManualLevelGeneration = useCallback((data: GenerateLevelOutput) => {
+    const newLevelNumber = levelCount + 1;
+    console.log(`HomePage: Manual generation for Level ${newLevelNumber}.`);
     setGeneratedLevel(data);
-    setLevelCount(prevCount => prevCount + 1); // También contar niveles generados manualmente
-     toast({
-      title: `Level ${levelCount +1} Generated Manually!`,
+    setLevelCount(newLevelNumber);
+    toast({
+      title: `Level ${newLevelNumber} Generated Manually!`,
       description: "The new level is ready for preview.",
     });
-  };
+  }, [levelCount, toast]); // Added levelCount and toast to dependencies
 
   const handleRequestNewLevel = useCallback(() => {
+    console.log(`HomePage: handleRequestNewLevel called. Current levelCount: ${levelCount}. Requesting Level ${levelCount + 1}.`);
     triggerLevelGeneration(DEFAULT_LEVEL_PARAMS);
-  }, [triggerLevelGeneration]);
+  }, [triggerLevelGeneration, levelCount]); // Added levelCount dependency
 
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground selection:bg-primary selection:text-primary-foreground">
@@ -99,7 +105,7 @@ export default function HomePage() {
             <GameScreen
               levelOutput={generatedLevel}
               onRequestNewLevel={handleRequestNewLevel}
-              levelId={levelCount} // Pasar el levelId
+              levelId={levelCount} // Pass the current level number (1 for first generated, etc.)
             />
             <LevelPreview levelOutput={generatedLevel} isLoading={isLoadingLevel} />
           </main>
