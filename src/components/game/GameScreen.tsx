@@ -77,8 +77,8 @@ interface PlatformObject {
   visibleDuration?: number;
   hiddenDuration?: number;
   isBroken?: boolean;
-  isBreaking?: boolean; // New: True if platform is in the process of breaking
-  breakingTimer?: number; // New: Timer for the delay before breaking
+  isBreaking?: boolean;
+  breakingTimer?: number;
   respawnTimer?: number; 
 }
 
@@ -169,9 +169,9 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput }) => {
         
         if (elements.length > 0) {
             worldMinX = Math.min(...elements.map(e => e.x));
-            worldMaxX = Math.max(...elements.map(e => e.x + (e.width || DEFAULT_PLATFORM_HEIGHT))); // Use actual width
+            worldMaxX = Math.max(...elements.map(e => e.x + (e.width || DEFAULT_PLATFORM_HEIGHT)));
             worldMinY = Math.min(...elements.map(e => e.y));
-            worldMaxY = Math.max(...elements.map(e => e.y + (e.height || DEFAULT_PLATFORM_HEIGHT))); // Use actual height
+            worldMaxY = Math.max(...elements.map(e => e.y + (e.height || DEFAULT_PLATFORM_HEIGHT)));
         }
         
         const worldWidth = Math.max(1, worldMaxX - worldMinX);
@@ -253,9 +253,9 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput }) => {
           if (obstacle.type === 'enemy') obstacleColor = OBSTACLE_COLOR_ENEMY;
           else if (obstacle.type === 'spikes') obstacleColor = OBSTACLE_COLOR_SPIKES;
 
-          oSprite.rect(0, 0, obsWidth, obsHeight) // Draw at (0,0) relative to sprite
+          oSprite.rect(0, 0, obsWidth, obsHeight)
                  .fill(obstacleColor);
-          oSprite.x = obstacle.x; // Position the sprite
+          oSprite.x = obstacle.x;
           oSprite.y = obstacle.y; 
           gameContainer.addChild(oSprite);
           obstacleObjectsRef.current.push(oSprite);
@@ -327,16 +327,58 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput }) => {
 
       if (pObj.type === 'mobile' && pObj.moveDirection !== undefined && pObj.moveRange !== undefined) {
         const prevSpriteX = pObj.sprite.x;
-        pObj.sprite.x += MOBILE_PLATFORM_SPEED * pObj.moveDirection;
-        if (pObj.moveDirection === 1 && pObj.sprite.x > pObj.initialX + pObj.moveRange) {
-          pObj.sprite.x = pObj.initialX + pObj.moveRange;
-          pObj.moveDirection = -1;
-        } else if (pObj.moveDirection === -1 && pObj.sprite.x < pObj.initialX - pObj.moveRange) {
-          pObj.sprite.x = pObj.initialX - pObj.moveRange;
-          pObj.moveDirection = 1;
+        let nextX = pObj.sprite.x + (MOBILE_PLATFORM_SPEED * pObj.moveDirection);
+        let collided = false;
+
+        // Check for collision with its movement range limits
+        if (pObj.moveDirection === 1 && nextX > pObj.initialX + pObj.moveRange) {
+            nextX = pObj.initialX + pObj.moveRange;
+            pObj.moveDirection = -1; 
+            collided = true; // Considered a "collision" with its boundary
+        } else if (pObj.moveDirection === -1 && nextX < pObj.initialX - pObj.moveRange) {
+            nextX = pObj.initialX - pObj.moveRange;
+            pObj.moveDirection = 1;
+            collided = true; // Considered a "collision" with its boundary
         }
+        
+        // Check for collision with other platforms
+        if (!collided) { // Only check if not already "collided" with range boundary
+            const mobilePlatformRect = { 
+                x: nextX, 
+                y: pObj.sprite.y, 
+                width: pObj.width, 
+                height: pObj.height 
+            };
+
+            for (const otherP of platformObjectsRef.current) {
+                if (pObj === otherP) continue; // Don't collide with self
+
+                // Only collide with solid platforms
+                const otherIsSolid = 
+                    !(otherP.type === 'timed' && !otherP.isVisible) &&
+                    !(otherP.type === 'breakable' && (otherP.isBroken || (otherP.isBreaking && otherP.breakingTimer !== undefined && otherP.breakingTimer <=0) ));
+
+                if (otherIsSolid) {
+                    const otherPlatformRect = { 
+                        x: otherP.sprite.x, 
+                        y: otherP.sprite.y, 
+                        width: otherP.width, 
+                        height: otherP.height 
+                    };
+                    if (checkCollision(mobilePlatformRect, otherPlatformRect)) {
+                        pObj.moveDirection *= -1; // Reverse direction
+                        nextX = pObj.sprite.x; // Don't move this frame
+                        collided = true;
+                        break; 
+                    }
+                }
+            }
+        }
+        pObj.sprite.x = nextX;
         pObj.currentSpeedX = pObj.sprite.x - prevSpriteX;
+
       }
+
 
       if (pObj.type === 'timed' && pObj.timer !== undefined && pObj.isVisible !== undefined && pObj.visibleDuration !== undefined && pObj.hiddenDuration !== undefined) {
         pObj.timer--;
@@ -354,7 +396,7 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput }) => {
             pObj.isBroken = true;
             pObj.sprite.visible = false;
             pObj.respawnTimer = BREAKABLE_PLATFORM_RESPAWN_DURATION;
-            pObj.isBreaking = false; // Reset for next respawn cycle
+            pObj.isBreaking = false;
             if (player.standingOnPlatform === pObj) {
               player.standingOnPlatform = null;
               player.onGround = false; 
@@ -365,7 +407,6 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput }) => {
           if (pObj.respawnTimer <= 0) {
             pObj.isBroken = false;
             pObj.sprite.visible = true;
-            // isBreaking is already false, breakingTimer will be set on next land
           }
         }
       }
@@ -383,10 +424,8 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput }) => {
     player.isCrouching = (keys.has('KeyS') || keys.has('ArrowDown')) && player.onGround;
     
     player.height = player.isCrouching ? PLAYER_CROUCH_HEIGHT : PLAYER_HEIGHT;
-    if (wasCrouching && !player.isCrouching) { // Standing up
-        player.y -= (PLAYER_HEIGHT - PLAYER_CROUCH_HEIGHT); // Adjust y pos from top
-    } else if (!wasCrouching && player.isCrouching) { // Crouching down
-        // y position is top of player, so no immediate change needed here when crouching
+    if (wasCrouching && !player.isCrouching) {
+        player.y -= (PLAYER_HEIGHT - PLAYER_CROUCH_HEIGHT);
     }
 
 
@@ -429,7 +468,7 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput }) => {
 
 
     const collidablePlatforms = platformObjectsRef.current.filter(p => {
-      if (p.type === 'breakable' && (p.isBroken || p.isBreaking && p.breakingTimer <=0)) return false; // Also non-collidable if breaking is done this frame
+      if (p.type === 'breakable' && (p.isBroken || (p.isBreaking && p.breakingTimer !== undefined && p.breakingTimer <=0))) return false;
       if (p.type === 'timed' && !p.isVisible) return false;
       return true;
     });
@@ -466,7 +505,6 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput }) => {
                     if (pObj.type === 'breakable' && !pObj.isBroken && !pObj.isBreaking) {
                         pObj.isBreaking = true;
                         pObj.breakingTimer = BREAKABLE_PLATFORM_BREAK_DELAY;
-                        // Platform does not break immediately, it starts its breakingTimer
                     }
                 }
             } else if (player.vy < 0) { 
@@ -529,7 +567,6 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput }) => {
                 player.x = firstObstacle.x;
                 player.y = firstObstacle.y - player.height;
             } else {
-                 // Fallback if no platforms or obstacles exist
                  const gameContainerWidth = gameContainerRef.current?.width ?? pixiAppRef.current.screen.width;
                  const gameContainerHeight = gameContainerRef.current?.height ?? pixiAppRef.current.screen.height;
                  const gameScaleX = gameContainerRef.current?.scale.x ?? 1;
