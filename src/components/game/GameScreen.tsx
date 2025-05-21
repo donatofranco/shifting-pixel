@@ -53,7 +53,7 @@ const BREAKABLE_PLATFORM_RESPAWN_DURATION = 5 * 60; // 5 seconds at 60fps
 
 const CAMERA_LERP_FACTOR = 0.1;
 const DESIRED_GAME_SCALE = 2.5;
-const CROUCH_CAMERA_VIEW_ADJUST_WORLD = 10; // How many world units lower the camera aims when crouching
+const CROUCH_CAMERA_VIEW_ADJUST_WORLD = 20; // How many world units lower the camera aims when crouching
 
 function checkCollision(rect1: {x: number, y: number, width: number, height: number},
                         rect2: {x: number, y: number, width: number, height: number}): boolean {
@@ -425,8 +425,23 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
             player.y += heightDifference; 
             player.height = PLAYER_CROUCH_HEIGHT;
         } else if (!player.isCrouching && wasCrouching) { 
-            player.y -= heightDifference; 
-            player.height = PLAYER_HEIGHT;
+             // Check for ceiling collision before uncrouching
+            const uncrouchCheckRect = { x: player.x, y: player.y - heightDifference, width: player.width, height: PLAYER_HEIGHT };
+            let canUncrouch = true;
+            for (const pObj of platformObjectsRef.current) {
+                const platformRect = { x: pObj.sprite.x, y: pObj.sprite.y, width: pObj.width, height: pObj.height };
+                 const isPlatformSolid = !( (pObj.type === 'timed' && !pObj.isVisible) || (pObj.type === 'breakable' && (pObj.isBroken || pObj.isBreaking) ) );
+                if (isPlatformSolid && checkCollision(uncrouchCheckRect, platformRect)) {
+                    canUncrouch = false;
+                    break;
+                }
+            }
+            if (canUncrouch) {
+                player.y -= heightDifference; 
+                player.height = PLAYER_HEIGHT;
+            } else {
+                 player.isCrouching = true; // Force stay crouching
+            }
         }
     }
 
@@ -464,7 +479,7 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
     }
 
     const collidablePlatforms = platformObjectsRef.current.filter(p => {
-      if (p.type === 'breakable' && (p.isBroken || (p.isBreaking && p.breakingTimer !== undefined && p.breakingTimer <=0))) return false;
+      if (p.type === 'breakable' && (p.isBroken || (p.isBreaking && p.breakingTimer !== undefined && pObj.breakingTimer <=0))) return false;
       if (p.type === 'timed' && !p.isVisible) return false;
       return true;
     });
