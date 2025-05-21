@@ -7,7 +7,7 @@ import * as PIXI from 'pixi.js';
 import type { GenerateLevelOutput } from '@/ai/flows/generate-level';
 import type { ParsedLevelData, Platform as PlatformData } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2 } from 'lucide-react'; 
+import { Loader2 } from 'lucide-react';
 
 interface GameScreenProps {
   levelOutput: GenerateLevelOutput | null;
@@ -92,6 +92,7 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
   const pixiAppRef = useRef<PIXI.Application | null>(null);
   const gameContainerRef = useRef<PIXI.Container | null>(null);
   const [isTransitioningLevel, setIsTransitioningLevel] = useState(false);
+  const [deathCount, setDeathCount] = useState<number>(0); // State for death count
   const jumpSoundRef = useRef<HTMLAudioElement | null>(null);
   const deathSoundRef = useRef<HTMLAudioElement | null>(null);
 
@@ -629,6 +630,7 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
     const fallBoundary = gameWorldMaxY;
     if (player.y > fallBoundary) {
         console.log(`GameScreen: Player fell off map for level ${levelId}. Respawning.`);
+        setDeathCount(prevCount => prevCount + 1); // Increment death count
         if (deathSoundRef.current) {
             deathSoundRef.current.currentTime = 0;
             deathSoundRef.current.play().catch(error => console.warn("Death sound play failed:", error));
@@ -687,7 +689,7 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
         gameContainer.y += (targetY - gameContainer.y) * CAMERA_LERP_FACTOR;
     }
 
-  }, [parsedData, onRequestNewLevel, levelId, isTransitioningLevel]);
+  }, [parsedData, onRequestNewLevel, levelId, isTransitioningLevel]); // Added isTransitioningLevel
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => keysPressedRef.current.add(event.code);
@@ -715,13 +717,15 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
         console.log(`GameScreen: gameLoop removed from ticker during cleanup for levelId ${levelId}.`);
       }
     };
-  }, [gameLoop, parsedData, levelId, isTransitioningLevel]); // Add isTransitioningLevel here
+  }, [gameLoop, parsedData, levelId, isTransitioningLevel]);
 
 
   return (
     <Card className="border-primary shadow-lg bg-card/80 backdrop-blur-sm h-[400px] md:h-[500px] flex flex-col">
       <CardHeader>
-        <CardTitle className="text-primary uppercase text-xl tracking-wider">Game Screen - Level {levelId != null && levelId > 0 ? levelId : 'Loading...'}</CardTitle>
+        <CardTitle className="text-primary uppercase text-xl tracking-wider">
+          Game Screen - Level {levelId != null && levelId > 0 ? levelId : 'Loading...'} - Deaths: {deathCount}
+        </CardTitle>
       </CardHeader>
       <CardContent className="flex-grow p-0 m-0 relative overflow-hidden">
         <div
@@ -748,3 +752,5 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
 
 export default GameScreen;
     
+
+      
