@@ -1,3 +1,4 @@
+
 // use server'
 'use server';
 
@@ -26,7 +27,7 @@ export type GenerateLevelInput = z.infer<typeof GenerateLevelInputSchema>;
 
 // Define the output schema for the level generation flow
 const GenerateLevelOutputSchema = z.object({
-  levelData: z.string().describe('A JSON string representing the generated level data, including platform positions, obstacle placements, and enemy locations.'),
+  levelData: z.string().describe('A JSON string representing the generated level data, including platform positions, types, obstacle placements, and enemy locations.'),
 });
 export type GenerateLevelOutput = z.infer<typeof GenerateLevelOutputSchema>;
 
@@ -43,7 +44,7 @@ const generateLevelPrompt = ai.definePrompt({
   prompt: `You are a game level designer specializing in 2D platformer levels with an 8-bit retro aesthetic.
 
   Your task is to generate level data in JSON format based on the provided specifications. The level should be designed to be challenging and fun to play.
-  The level data should include platform positions, obstacle placements, and enemy locations.
+  The level data should include platform positions, types, obstacle placements, and enemy locations.
 
   Difficulty: {{{difficulty}}}
   Level Length: {{{levelLength}}}
@@ -51,18 +52,21 @@ const generateLevelPrompt = ai.definePrompt({
   Obstacle Density: {{{obstacleDensity}}}
 
   Ensure that the level is solvable and has a clear path from start to finish.
+  Incorporate a variety of platform types: 'standard', 'mobile' (moves horizontally), 'timed' (appears and disappears), and 'breakable' (breaks after one touch). Distribute these types thoughtfully to create interesting challenges.
+  Obstacles should also have 'width' and 'height' properties if applicable for their type (e.g. spikes might be wider than they are tall).
 
-  Return the level data as a JSON string.
+  Return the level data as a JSON string. The "platforms" array should include a "type" field for each platform.
   {
     "platforms": [
-      {"x": 0, "y": 100, "width": 50},
-      {"x": 70, "y": 150, "width": 30},
-      {"x": 120, "y": 200, "width": 40}
+      {"x": 0, "y": 100, "width": 50, "type": "standard"},
+      {"x": 70, "y": 150, "width": 30, "type": "mobile"},
+      {"x": 120, "y": 200, "width": 40, "type": "timed"},
+      {"x": 180, "y": 120, "width": 60, "type": "breakable"}
     ],
     "obstacles": [
-      {"type": "spikes", "x": 60, "y": 190},
-      {"type": "enemy", "x": 150, "y": 180}
-    ],
+      {"type": "spikes", "x": 60, "y": 190, "width": 30, "height": 10},
+      {"type": "enemy", "x": 150, "y": 180, "width": 15, "height": 15}
+    ]
   }
   `,
 });
