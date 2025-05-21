@@ -92,9 +92,10 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
   const pixiAppRef = useRef<PIXI.Application | null>(null);
   const gameContainerRef = useRef<PIXI.Container | null>(null);
   const [isTransitioningLevel, setIsTransitioningLevel] = useState(false);
-  const [deathCount, setDeathCount] = useState<number>(0); // State for death count
+  const [deathCount, setDeathCount] = useState<number>(0);
   const jumpSoundRef = useRef<HTMLAudioElement | null>(null);
   const deathSoundRef = useRef<HTMLAudioElement | null>(null);
+  const winSoundRef = useRef<HTMLAudioElement | null>(null);
 
 
   const playerRef = useRef<{
@@ -166,6 +167,7 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
 
         jumpSoundRef.current = new Audio('/sounds/jump.wav');
         deathSoundRef.current = new Audio('/sounds/death.wav');
+        winSoundRef.current = new Audio('/sounds/win.wav');
       })();
     }
 
@@ -185,6 +187,10 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
       if (deathSoundRef.current) {
         deathSoundRef.current.pause();
         deathSoundRef.current = null;
+      }
+      if (winSoundRef.current) {
+        winSoundRef.current.pause();
+        winSoundRef.current = null;
       }
     };
   }, []);
@@ -630,7 +636,7 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
     const fallBoundary = gameWorldMaxY;
     if (player.y > fallBoundary) {
         console.log(`GameScreen: Player fell off map for level ${levelId}. Respawning.`);
-        setDeathCount(prevCount => prevCount + 1); // Increment death count
+        setDeathCount(prevCount => prevCount + 1);
         if (deathSoundRef.current) {
             deathSoundRef.current.currentTime = 0;
             deathSoundRef.current.play().catch(error => console.warn("Death sound play failed:", error));
@@ -645,9 +651,9 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
         }
         player.vy = 0;
         player.isJumping = false;
-        player.onGround = false; // Will be set true if lands on platform
+        player.onGround = false; 
         player.standingOnPlatform = null;
-        // Reset crouch state
+        
         player.height = PLAYER_HEIGHT;
         player.isCrouching = false;
     }
@@ -655,30 +661,29 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
     // Check for level completion
     if (lastPlatformRef.current &&
         player.standingOnPlatform === lastPlatformRef.current &&
-        player.onGround && // Must be on ground on the last platform
+        player.onGround && 
         !newLevelRequestedRef.current &&
         onRequestNewLevel) {
       console.log(`GameScreen: Player is ON the last platform of level ${levelId}. Platform Type: ${lastPlatformRef.current.type}. newLevelRequestedRef: ${newLevelRequestedRef.current}`);
       
-      setIsTransitioningLevel(true); // Show "Level Complete" message
-      newLevelRequestedRef.current = true; // Prevent multiple requests
+      if (winSoundRef.current) {
+        winSoundRef.current.currentTime = 0;
+        winSoundRef.current.play().catch(error => console.warn("Win sound play failed:", error));
+      }
+      setIsTransitioningLevel(true); 
+      newLevelRequestedRef.current = true; 
 
       console.log(`GameScreen: Calling onRequestNewLevel() for level ${levelId}. isTransitioningLevel set to true.`);
-      onRequestNewLevel(); // Request the next level
+      onRequestNewLevel(); 
     }
 
     // Camera follow logic
     if (app && gameContainer) {
-        const scale = gameContainer.scale.x; // This is DESIRED_GAME_SCALE
+        const scale = gameContainer.scale.x; 
         
-        // Calculate player's visual center Y, considering crouch for camera focus
-        let playerVisualCenterY = player.y + player.height / 2;
-        let playerFocusY = playerVisualCenterY;
+        let playerFocusY = player.y + player.height / 2;
 
         if (player.isCrouching) {
-            // When crouching, the player's sprite.y has moved down.
-            // The visual center is player.y (new top) + PLAYER_CROUCH_HEIGHT / 2.
-            // We want to shift the camera's view further down.
             playerFocusY = player.y + (PLAYER_CROUCH_HEIGHT / 2) + CROUCH_CAMERA_VIEW_ADJUST_WORLD;
         }
 
@@ -689,7 +694,7 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
         gameContainer.y += (targetY - gameContainer.y) * CAMERA_LERP_FACTOR;
     }
 
-  }, [parsedData, onRequestNewLevel, levelId, isTransitioningLevel]); // Added isTransitioningLevel
+  }, [parsedData, onRequestNewLevel, levelId, isTransitioningLevel]); 
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => keysPressedRef.current.add(event.code);
@@ -700,8 +705,8 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
 
     const app = pixiAppRef.current;
     if (app && app.ticker) {
-      app.ticker.remove(gameLoop); // Remove existing loop before adding, to prevent duplicates
-      if (!isTransitioningLevel) { // Only run gameLoop if not transitioning
+      app.ticker.remove(gameLoop); 
+      if (!isTransitioningLevel) { 
         app.ticker.add(gameLoop);
         console.log(`GameScreen: gameLoop added to ticker for levelId ${levelId}.`);
       } else {
