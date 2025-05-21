@@ -9,7 +9,7 @@ import type { ParsedLevelData, Platform as PlatformData } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Loader2, SlidersHorizontal, Gamepad2 } from 'lucide-react';
+import { Loader2, SlidersHorizontal, Gamepad2, TimerIcon } from 'lucide-react';
 import LevelGeneratorForm from '@/components/game/LevelGeneratorForm';
 import ControlsGuide from '@/components/game/ControlsGuide';
 
@@ -96,6 +96,12 @@ interface PlatformObject {
   respawnTimer?: number;
 }
 
+const formatTime = (totalSeconds: number): string => {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = Math.floor(totalSeconds % 60);
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+};
+
 
 const GameScreen: FC<GameScreenProps> = ({ 
   levelOutput, 
@@ -112,6 +118,8 @@ const GameScreen: FC<GameScreenProps> = ({
   const [deathCount, setDeathCount] = useState<number>(0);
   const [isFormPopoverOpen, setIsFormPopoverOpen] = useState<boolean>(false);
   const [isControlsPopoverOpen, setIsControlsPopoverOpen] = useState<boolean>(false);
+  const [elapsedTime, setElapsedTime] = useState<number>(0);
+  const levelStartTimeRef = useRef<number | null>(null);
 
 
   const jumpSoundRef = useRef<HTMLAudioElement | null>(null);
@@ -155,6 +163,9 @@ const GameScreen: FC<GameScreenProps> = ({
             newLevelRequestedRef.current = false;
             console.log(`GameScreen: New level detected (ID: ${levelId} from prev ${prevLevelIdRef.current}). newLevelRequestedRef reset.`);
         }
+        // Reset timer for new level
+        setElapsedTime(0);
+        levelStartTimeRef.current = Date.now();
     }
     prevLevelIdRef.current = levelId;
   }, [levelId]);
@@ -189,6 +200,11 @@ const GameScreen: FC<GameScreenProps> = ({
         jumpSoundRef.current = new Audio('/sounds/jump.wav');
         deathSoundRef.current = new Audio('/sounds/death.wav');
         winSoundRef.current = new Audio('/sounds/win.wav');
+
+        if (levelId > 0) { // Start timer if a level is already loaded (e.g. first level)
+            levelStartTimeRef.current = Date.now();
+        }
+
       })();
     }
 
@@ -205,7 +221,7 @@ const GameScreen: FC<GameScreenProps> = ({
       if (deathSoundRef.current) deathSoundRef.current.pause(); deathSoundRef.current = null;
       if (winSoundRef.current) winSoundRef.current.pause(); winSoundRef.current = null;
     };
-  }, []);
+  }, []); // Removed levelId dependency here to avoid re-init on level change
 
   useEffect(() => {
     const app = pixiAppRef.current;
@@ -343,6 +359,12 @@ const GameScreen: FC<GameScreenProps> = ({
     }
     if (player.sprite) player.sprite.visible = true;
 
+    // Update timer
+    if (levelStartTimeRef.current && !isLoading && !isFormPopoverOpen && !isControlsPopoverOpen) {
+        const currentTime = (Date.now() - levelStartTimeRef.current) / 1000;
+        setElapsedTime(currentTime);
+    }
+
     platformObjectsRef.current.forEach(pObj => {
       pObj.currentSpeedX = 0; pObj.currentSpeedY = 0;
 
@@ -426,12 +448,12 @@ const GameScreen: FC<GameScreenProps> = ({
                 if (pSolid && checkCollision(uncrouchRect, pRect)) { canUncrouch = false; break; }
             }
             if (canUncrouch) { player.y -= heightDiff; player.height = PLAYER_HEIGHT; }
-            else { player.isCrouching = true; } // Stay crouching if cannot uncrouch
+            else { player.isCrouching = true; } 
         }
     }
 
     player.vx = 0;
-    if (!player.isCrouching) { // Only allow horizontal movement if not crouching
+    if (!player.isCrouching) { 
         if (keys.has('KeyA') || keys.has('ArrowLeft')) player.vx = -PLAYER_SPEED;
         if (keys.has('KeyD') || keys.has('ArrowRight')) player.vx = PLAYER_SPEED;
     }
@@ -442,7 +464,7 @@ const GameScreen: FC<GameScreenProps> = ({
     }
 
     if (!player.onGround) player.vy += GRAVITY;
-    else { if (player.vy > 0) player.vy = 0; } // Stop downward movement if on ground
+    else { if (player.vy > 0) player.vy = 0; } 
 
     const prevPlayerX = player.x; player.x += player.vx;
     const prevPlayerY = player.y; player.y += player.vy;
@@ -461,7 +483,6 @@ const GameScreen: FC<GameScreenProps> = ({
       return true;
     });
 
-    // Horizontal collision resolution
     for (const pObj of collidablePlatforms) {
         const pRect = { x: pObj.sprite.x, y: pObj.sprite.y, width: pObj.width, height: pObj.height };
         const playerHRect = { x: player.x, y: prevPlayerY, width: player.width, height: player.height }; 
@@ -472,7 +493,6 @@ const GameScreen: FC<GameScreenProps> = ({
         }
     }
 
-    // Vertical collision resolution
     for (const pObj of collidablePlatforms) {
         const pRect = { x: pObj.sprite.x, y: pObj.sprite.y, width: pObj.width, height: pObj.height };
         const playerVRect = { x: player.x, y: player.y, width: player.width, height: player.height }; 
@@ -550,11 +570,11 @@ const GameScreen: FC<GameScreenProps> = ({
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-        if (isFormPopoverOpen || isControlsPopoverOpen) return; 
+        if (isLoading || isFormPopoverOpen || isControlsPopoverOpen) return; 
         keysPressedRef.current.add(event.code);
     }
     const handleKeyUp = (event: KeyboardEvent) => {
-        if (isFormPopoverOpen || isControlsPopoverOpen) return;
+        // Always allow key up to prevent stuck keys if popover opens mid-press
         keysPressedRef.current.delete(event.code);
     }
     window.addEventListener('keydown', handleKeyDown);
@@ -590,8 +610,14 @@ const GameScreen: FC<GameScreenProps> = ({
   return (
     <Card className="border-primary shadow-lg bg-card/80 backdrop-blur-sm flex-grow flex flex-col">
       <CardHeader className="flex flex-row items-center justify-between p-4">
-        <CardTitle className="text-primary uppercase text-lg md:text-xl tracking-wider">
-          Level {levelId != null && levelId > 0 ? levelId : 'Loading...'} - Deaths: {deathCount}
+        <CardTitle className="text-primary uppercase text-sm md:text-base tracking-wider flex items-center gap-x-2 md:gap-x-3">
+          <span>Level {levelId != null && levelId > 0 ? levelId : '...'}</span>
+          <span className="text-foreground/70">|</span>
+          <span>Deaths: {deathCount}</span>
+          <span className="text-foreground/70">|</span>
+          <span className="flex items-center">
+            <TimerIcon className="w-4 h-4 mr-1 text-foreground/70" /> {formatTime(elapsedTime)}
+          </span>
         </CardTitle>
         <div className="flex items-center gap-1">
             <Popover open={isControlsPopoverOpen} onOpenChange={setIsControlsPopoverOpen}>
