@@ -1,11 +1,12 @@
-// @ts-nocheck
-// TODO: Fix TS errors
+
 'use server';
 import { generateLevel, type GenerateLevelInput, type GenerateLevelOutput } from '@/ai/flows/generate-level';
 
 export async function handleGenerateLevelAction(input: GenerateLevelInput): Promise<GenerateLevelOutput | { error: string }> {
   try {
     console.log("Generating level with input:", input);
+    // The 'input' received here should already conform to GenerateLevelInput
+    // if LevelGeneratorFormValues is structurally identical to GenerateLevelInput.
     const result = await generateLevel(input);
     console.log("Level generated successfully:", result);
     return result;

@@ -1,5 +1,3 @@
-// @ts-nocheck
-// TODO: Fix TS errors
 "use client";
 
 import { useState } from 'react';
@@ -34,7 +32,7 @@ export default function HomePage() {
 
           {/* Right Column / Game Area */}
           <main className="flex-1 space-y-6 md:space-y-8">
-            <GameScreen />
+            <GameScreen levelOutput={generatedLevel} />
             <LevelPreview levelOutput={generatedLevel} isLoading={isLoadingLevel} />
           </main>
         </div>
