@@ -6,7 +6,6 @@ import type { GenerateLevelOutput, GenerateLevelInput } from '@/ai/flows/generat
 import SiteHeader from '@/components/layout/SiteHeader';
 import LevelGeneratorForm from '@/components/game/LevelGeneratorForm';
 import GameScreen from '@/components/game/GameScreen';
-import LevelPreview from '@/components/game/LevelPreview';
 import ControlsGuide from '@/components/game/ControlsGuide';
 import { handleGenerateLevelAction } from '@/app/actions';
 import { useToast } from "@/hooks/use-toast";
@@ -39,7 +38,7 @@ export default function HomePage() {
           title: `Level ${nextLevelNumber} Generation Failed`,
           description: result.error || "An unknown error occurred.",
         });
-        setGeneratedLevel(null);
+        setGeneratedLevel(null); // Explicitly set to null on error
       } else {
         console.log(`HomePage: Level ${nextLevelNumber} generated successfully.`);
         setGeneratedLevel(result);
@@ -56,7 +55,7 @@ export default function HomePage() {
         title: "Error",
         description: `An unexpected error occurred while generating level ${nextLevelNumber}.`,
       });
-      setGeneratedLevel(null);
+      setGeneratedLevel(null); // Explicitly set to null on error
     } finally {
       setIsLoadingLevel(false);
     }
@@ -78,7 +77,7 @@ export default function HomePage() {
     setIsLoadingLevel(false); // Ensure loading is false after manual gen
     toast({
       title: `Level ${newLevelNumber} Generated Manually!`,
-      description: "The new level is ready for preview.",
+      description: "The new level is ready for play.",
     });
   }, [levelCount, toast]);
 
@@ -97,7 +96,7 @@ export default function HomePage() {
           <aside className="w-full lg:w-1/3 xl:w-1/4 space-y-6 md:space-y-8">
             <LevelGeneratorForm
               onLevelGenerated={handleManualLevelGeneration}
-              setIsLoadingLevel={setIsLoadingLevel} // Pass this to form for its own loading state too
+              setIsLoadingLevel={setIsLoadingLevel} 
               initialValues={DEFAULT_LEVEL_PARAMS}
             />
             <ControlsGuide />
@@ -108,10 +107,10 @@ export default function HomePage() {
             <GameScreen
               levelOutput={generatedLevel}
               onRequestNewLevel={handleRequestNewLevel}
-              levelId={levelCount} // Pass the current level number (0 for initial, 1 for first generated, etc.)
-              isLoading={isLoadingLevel} // Pass the loading state
+              levelId={levelCount} 
+              isLoading={isLoadingLevel}
             />
-            <LevelPreview levelOutput={generatedLevel} isLoading={isLoadingLevel} />
+            {/* LevelPreview component removed from here */}
           </main>
         </div>
       </div>
