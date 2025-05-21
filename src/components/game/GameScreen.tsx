@@ -50,7 +50,7 @@ const TIMED_PLATFORM_HIDDEN_DURATION = 2 * 60;  // 2 seconds at 60fps
 const BREAKABLE_PLATFORM_BREAK_DELAY = 0.5 * 60; // 0.5 seconds at 60fps
 const BREAKABLE_PLATFORM_RESPAWN_DURATION = 5 * 60; // 5 seconds at 60fps
 const CAMERA_LERP_FACTOR = 0.1;
-const DESIRED_GAME_SCALE = 3;
+const DESIRED_GAME_SCALE = 2.5; // Adjusted from 3 to 2.5
 
 
 function checkCollision(rect1: {x: number, y: number, width: number, height: number},
@@ -670,4 +670,5 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
 };
 
 export default GameScreen;
+
 
