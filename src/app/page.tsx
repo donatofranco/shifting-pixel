@@ -20,14 +20,15 @@ const DEFAULT_LEVEL_PARAMS: GenerateLevelInput = {
 
 export default function HomePage() {
   const [generatedLevel, setGeneratedLevel] = useState<GenerateLevelOutput | null>(null);
-  const [isLoadingLevel, setIsLoadingLevel] = useState<boolean>(false);
+  const [isLoadingLevel, setIsLoadingLevel] = useState<boolean>(true); // Start true for initial load
   const { toast } = useToast();
   const initialLevelGeneratedRef = useRef(false);
-  const [levelCount, setLevelCount] = useState(0); // Contador de niveles (0 significa que ningún nivel se ha generado aún)
+  const [levelCount, setLevelCount] = useState(0); // 0 means no level generated yet
 
   const triggerLevelGeneration = useCallback(async (params: GenerateLevelInput) => {
     setIsLoadingLevel(true);
-    const nextLevelNumber = levelCount + 1; // Calculate next level number before async operation
+    const isInitialGeneration = levelCount === 0;
+    const nextLevelNumber = isInitialGeneration ? 1 : levelCount + 1;
     console.log(`HomePage: Attempting to generate Level ${nextLevelNumber} with params:`, params);
     try {
       const result = await handleGenerateLevelAction(params);
@@ -38,14 +39,14 @@ export default function HomePage() {
           title: `Level ${nextLevelNumber} Generation Failed`,
           description: result.error || "An unknown error occurred.",
         });
-        setGeneratedLevel(null); // Clear level data on error
+        setGeneratedLevel(null);
       } else {
         console.log(`HomePage: Level ${nextLevelNumber} generated successfully.`);
         setGeneratedLevel(result);
-        setLevelCount(nextLevelNumber); // Update levelCount to the new level number
+        setLevelCount(nextLevelNumber);
         toast({
           title: `Level ${nextLevelNumber} Generated!`,
-          description: "The adventure continues.",
+          description: isInitialGeneration ? "Let the adventure begin!" : "The adventure continues.",
         });
       }
     } catch (error) {
@@ -59,31 +60,33 @@ export default function HomePage() {
     } finally {
       setIsLoadingLevel(false);
     }
-  }, [toast, levelCount]); // levelCount is a dependency, so this callback is fresh.
+  }, [toast, levelCount]);
 
   useEffect(() => {
     if (!initialLevelGeneratedRef.current) {
       initialLevelGeneratedRef.current = true;
       console.log("HomePage: Initial level generation triggered.");
-      triggerLevelGeneration(DEFAULT_LEVEL_PARAMS); // Generates Level 1
+      triggerLevelGeneration(DEFAULT_LEVEL_PARAMS);
     }
   }, [triggerLevelGeneration]);
 
   const handleManualLevelGeneration = useCallback((data: GenerateLevelOutput) => {
-    const newLevelNumber = levelCount + 1;
+    const newLevelNumber = levelCount === 0 ? 1 : levelCount + 1;
     console.log(`HomePage: Manual generation for Level ${newLevelNumber}.`);
     setGeneratedLevel(data);
-    setLevelCount(newLevelNumber);
+    setLevelCount(newLevelNumber); // Update levelCount
+    setIsLoadingLevel(false); // Ensure loading is false after manual gen
     toast({
       title: `Level ${newLevelNumber} Generated Manually!`,
       description: "The new level is ready for preview.",
     });
-  }, [levelCount, toast]); // Added levelCount and toast to dependencies
+  }, [levelCount, toast]);
 
   const handleRequestNewLevel = useCallback(() => {
     console.log(`HomePage: handleRequestNewLevel called. Current levelCount: ${levelCount}. Requesting Level ${levelCount + 1}.`);
+    // DEFAULT_LEVEL_PARAMS can be adjusted here if desired for subsequent levels
     triggerLevelGeneration(DEFAULT_LEVEL_PARAMS);
-  }, [triggerLevelGeneration, levelCount]); // Added levelCount dependency
+  }, [triggerLevelGeneration, levelCount]);
 
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground selection:bg-primary selection:text-primary-foreground">
@@ -94,7 +97,7 @@ export default function HomePage() {
           <aside className="w-full lg:w-1/3 xl:w-1/4 space-y-6 md:space-y-8">
             <LevelGeneratorForm
               onLevelGenerated={handleManualLevelGeneration}
-              setIsLoadingLevel={setIsLoadingLevel}
+              setIsLoadingLevel={setIsLoadingLevel} // Pass this to form for its own loading state too
               initialValues={DEFAULT_LEVEL_PARAMS}
             />
             <ControlsGuide />
@@ -105,7 +108,8 @@ export default function HomePage() {
             <GameScreen
               levelOutput={generatedLevel}
               onRequestNewLevel={handleRequestNewLevel}
-              levelId={levelCount} // Pass the current level number (1 for first generated, etc.)
+              levelId={levelCount} // Pass the current level number (0 for initial, 1 for first generated, etc.)
+              isLoading={isLoadingLevel} // Pass the loading state
             />
             <LevelPreview levelOutput={generatedLevel} isLoading={isLoadingLevel} />
           </main>

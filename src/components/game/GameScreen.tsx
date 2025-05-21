@@ -12,7 +12,8 @@ import { Loader2 } from 'lucide-react';
 interface GameScreenProps {
   levelOutput: GenerateLevelOutput | null;
   onRequestNewLevel?: () => void;
-  levelId?: number;
+  levelId?: number; // 0 if no level loaded, 1 for first level, etc.
+  isLoading: boolean; // True if a level is currently being generated
 }
 
 const parseLevelData = (levelDataString: string | undefined): ParsedLevelData | null => {
@@ -20,7 +21,7 @@ const parseLevelData = (levelDataString: string | undefined): ParsedLevelData | 
   try {
     const data = JSON.parse(levelDataString);
     if (!data.platforms || !Array.isArray(data.platforms)) data.platforms = [];
-    data.obstacles = []; // Obstacles are explicitly not rendered
+    data.obstacles = [];
     return data as ParsedLevelData;
   } catch (error) {
     console.error("Failed to parse level data for GameScreen:", error);
@@ -37,8 +38,8 @@ const GRAVITY = 0.3;
 const DEFAULT_PLATFORM_HEIGHT = 10;
 
 const PLATFORM_COLOR_STANDARD = 0x9400D3;
-const PLATFORM_COLOR_MOBILE = 0x0077FF; // Horizontal mobile
-const PLATFORM_COLOR_VERTICAL_MOBILE = 0x00D377; // Vertical mobile
+const PLATFORM_COLOR_MOBILE = 0x0077FF;
+const PLATFORM_COLOR_VERTICAL_MOBILE = 0x00D377;
 const PLATFORM_COLOR_TIMED = 0xFF8C00;
 const PLATFORM_COLOR_BREAKABLE = 0x8B4513;
 
@@ -46,10 +47,10 @@ const PLAYER_COLOR = 0xFFDE00;
 
 const DEFAULT_PLATFORM_MOVE_SPEED = 0.5;
 const DEFAULT_PLATFORM_MOVE_RANGE = 50;
-const TIMED_PLATFORM_VISIBLE_DURATION = 3 * 60; // 3 seconds at 60 FPS
-const TIMED_PLATFORM_HIDDEN_DURATION = 2 * 60;  // 2 seconds at 60 FPS
-const BREAKABLE_PLATFORM_BREAK_DELAY = 0.5 * 60; // 0.5 seconds
-const BREAKABLE_PLATFORM_RESPAWN_DURATION = 5 * 60; // 5 seconds
+const TIMED_PLATFORM_VISIBLE_DURATION = 3 * 60;
+const TIMED_PLATFORM_HIDDEN_DURATION = 2 * 60;
+const BREAKABLE_PLATFORM_BREAK_DELAY = 0.5 * 60;
+const BREAKABLE_PLATFORM_RESPAWN_DURATION = 5 * 60;
 
 const CAMERA_LERP_FACTOR = 0.1;
 const DESIRED_GAME_SCALE = 2.5;
@@ -87,11 +88,10 @@ interface PlatformObject {
 }
 
 
-const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, levelId }) => {
+const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, levelId = 0, isLoading }) => {
   const pixiContainerRef = useRef<HTMLDivElement>(null);
   const pixiAppRef = useRef<PIXI.Application | null>(null);
   const gameContainerRef = useRef<PIXI.Container | null>(null);
-  const [isTransitioningLevel, setIsTransitioningLevel] = useState(false);
   const [deathCount, setDeathCount] = useState<number>(0);
   const jumpSoundRef = useRef<HTMLAudioElement | null>(null);
   const deathSoundRef = useRef<HTMLAudioElement | null>(null);
@@ -130,10 +130,12 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
 
   useEffect(() => {
     console.log(`GameScreen: useEffect for levelId. Current levelId: ${levelId}, prevLevelIdRef: ${prevLevelIdRef.current}`);
-    if (levelId !== undefined && levelId > 0 && prevLevelIdRef.current !== levelId && prevLevelIdRef.current !== undefined) {
-      newLevelRequestedRef.current = false;
-      setIsTransitioningLevel(false); // New level is ready, stop transition screen
-      console.log(`GameScreen: New level detected (ID: ${levelId} from prev ${prevLevelIdRef.current}). newLevelRequestedRef and isTransitioningLevel reset.`);
+    // Reset newLevelRequestedRef when a new level actually starts (levelId changes and is > 0)
+    if (levelId !== undefined && levelId > 0 && prevLevelIdRef.current !== levelId) {
+        if (prevLevelIdRef.current !== undefined) { // Avoid resetting on initial load from undefined to 0 or 1
+            newLevelRequestedRef.current = false;
+            console.log(`GameScreen: New level detected (ID: ${levelId} from prev ${prevLevelIdRef.current}). newLevelRequestedRef reset.`);
+        }
     }
     prevLevelIdRef.current = levelId;
   }, [levelId]);
@@ -180,18 +182,9 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
         platformObjectsRef.current = [];
         lastPlatformRef.current = null;
       }
-      if (jumpSoundRef.current) {
-        jumpSoundRef.current.pause();
-        jumpSoundRef.current = null;
-      }
-      if (deathSoundRef.current) {
-        deathSoundRef.current.pause();
-        deathSoundRef.current = null;
-      }
-      if (winSoundRef.current) {
-        winSoundRef.current.pause();
-        winSoundRef.current = null;
-      }
+      if (jumpSoundRef.current) jumpSoundRef.current.pause(); jumpSoundRef.current = null;
+      if (deathSoundRef.current) deathSoundRef.current.pause(); deathSoundRef.current = null;
+      if (winSoundRef.current) winSoundRef.current.pause(); winSoundRef.current = null;
     };
   }, []);
 
@@ -228,36 +221,25 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
           gameContainer.addChild(pSprite);
 
           const platformObj: PlatformObject = {
-            sprite: pSprite,
-            initialX: platformData.x,
-            initialY: platformData.y,
-            width: platformData.width,
-            height: DEFAULT_PLATFORM_HEIGHT,
-            type: platformData.type || 'standard',
-            currentSpeedX: 0,
-            currentSpeedY: 0,
+            sprite: pSprite, initialX: platformData.x, initialY: platformData.y,
+            width: platformData.width, height: DEFAULT_PLATFORM_HEIGHT,
+            type: platformData.type || 'standard', currentSpeedX: 0, currentSpeedY: 0,
           };
 
           if (platformData.type === 'mobile') {
-            platformObj.moveDirectionX = 1;
-            platformObj.moveRangeX = DEFAULT_PLATFORM_MOVE_RANGE;
+            platformObj.moveDirectionX = 1; platformObj.moveRangeX = DEFAULT_PLATFORM_MOVE_RANGE;
           }
           if (platformData.type === 'vertical_mobile') {
-            platformObj.moveDirectionY = 1; // Start moving down
-            platformObj.moveRangeY = DEFAULT_PLATFORM_MOVE_RANGE;
+            platformObj.moveDirectionY = 1; platformObj.moveRangeY = DEFAULT_PLATFORM_MOVE_RANGE;
           }
           if (platformData.type === 'timed') {
-            platformObj.isVisible = true;
-            platformObj.visibleDuration = TIMED_PLATFORM_VISIBLE_DURATION;
-            platformObj.hiddenDuration = TIMED_PLATFORM_HIDDEN_DURATION;
-            platformObj.timer = platformObj.visibleDuration;
+            platformObj.isVisible = true; platformObj.visibleDuration = TIMED_PLATFORM_VISIBLE_DURATION;
+            platformObj.hiddenDuration = TIMED_PLATFORM_HIDDEN_DURATION; platformObj.timer = platformObj.visibleDuration;
             pSprite.visible = true;
           }
           if (platformData.type === 'breakable') {
-            platformObj.isBroken = false;
-            platformObj.isBreaking = false;
-            platformObj.breakingTimer = 0;
-            platformObj.respawnTimer = 0;
+            platformObj.isBroken = false; platformObj.isBreaking = false;
+            platformObj.breakingTimer = 0; platformObj.respawnTimer = 0;
             pSprite.visible = true;
           }
           platformObjectsRef.current.push(platformObj);
@@ -281,30 +263,19 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
 
         if (!playerRef.current) {
             const playerSprite = new PIXI.Graphics();
-            let startX = 50;
-            let startY = 100;
+            let startX = 50, startY = 100;
             if (platformObjectsRef.current.length > 0) {
                 const firstPlatform = platformObjectsRef.current.find(p => p.type === 'standard' || !p.type) || platformObjectsRef.current[0];
                 startX = firstPlatform.sprite.x + firstPlatform.width / 2 - PLAYER_WIDTH / 2;
                 startY = firstPlatform.sprite.y - PLAYER_HEIGHT;
             }
-            console.log(`GameScreen: Creating player for level ${levelId} at X: ${startX}, Y: ${startY}`);
             playerRef.current = {
-                sprite: playerSprite,
-                x: startX,
-                y: startY,
-                vx: 0,
-                vy: 0,
-                isJumping: false,
-                isCrouching: false,
-                onGround: false,
-                width: PLAYER_WIDTH,
-                height: PLAYER_HEIGHT,
-                standingOnPlatform: null,
+                sprite: playerSprite, x: startX, y: startY, vx: 0, vy: 0,
+                isJumping: false, isCrouching: false, onGround: false,
+                width: PLAYER_WIDTH, height: PLAYER_HEIGHT, standingOnPlatform: null,
             };
             playerSprite.rect(0, 0, playerRef.current.width, playerRef.current.height).fill(PLAYER_COLOR);
-            playerSprite.x = playerRef.current.x;
-            playerSprite.y = playerRef.current.y;
+            playerSprite.x = playerRef.current.x; playerSprite.y = playerRef.current.y;
             gameContainer.addChild(playerSprite);
         } else {
              if (platformObjectsRef.current.length > 0) {
@@ -312,26 +283,19 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
                 playerRef.current.x = firstPlatform.sprite.x + firstPlatform.width / 2 - playerRef.current.width / 2;
                 playerRef.current.y = firstPlatform.sprite.y - playerRef.current.height;
             } else {
-                playerRef.current.x = 50;
-                playerRef.current.y = 100;
+                playerRef.current.x = 50; playerRef.current.y = 100;
             }
-            console.log(`GameScreen: Resetting player for level ${levelId} to X: ${playerRef.current.x}, Y: ${playerRef.current.y}`);
-            playerRef.current.sprite.x = playerRef.current.x;
-            playerRef.current.sprite.y = playerRef.current.y;
-            playerRef.current.vx = 0;
-            playerRef.current.vy = 0;
-            playerRef.current.onGround = false;
-            playerRef.current.isJumping = false;
-            playerRef.current.height = PLAYER_HEIGHT;
-            playerRef.current.isCrouching = false;
-            playerRef.current.standingOnPlatform = null;
+            playerRef.current.sprite.x = playerRef.current.x; playerRef.current.sprite.y = playerRef.current.y;
+            playerRef.current.vx = 0; playerRef.current.vy = 0; playerRef.current.onGround = false;
+            playerRef.current.isJumping = false; playerRef.current.height = PLAYER_HEIGHT;
+            playerRef.current.isCrouching = false; playerRef.current.standingOnPlatform = null;
             if (!gameContainer.children.includes(playerRef.current.sprite)) {
                  gameContainer.addChild(playerRef.current.sprite);
             }
         }
 
         if (playerRef.current && app && gameContainer) {
-            const scale = gameContainer.scale.x; // DESIRED_GAME_SCALE
+            const scale = gameContainer.scale.x;
             let playerFocusY = playerRef.current.y + PLAYER_HEIGHT / 2;
             if (playerRef.current.isCrouching) {
                  playerFocusY = playerRef.current.y + PLAYER_CROUCH_HEIGHT / 2 + CROUCH_CAMERA_VIEW_ADJUST_WORLD;
@@ -341,12 +305,7 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
         }
 
       } else {
-        console.log(`GameScreen: No parsed data or no platforms for level ${levelId}. Clearing platforms and hiding player if exists.`);
-        platformObjectsRef.current = [];
-        lastPlatformRef.current = null;
-        if (playerRef.current && playerRef.current.sprite) {
-          playerRef.current.sprite.visible = false;
-        }
+        if (playerRef.current && playerRef.current.sprite) playerRef.current.sprite.visible = false;
       }
     }
   }, [parsedData, pixiAppRef.current?.renderer?.width, pixiAppRef.current?.renderer?.height, levelId]);
@@ -366,187 +325,114 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
     if (player.sprite) player.sprite.visible = true;
 
     platformObjectsRef.current.forEach(pObj => {
-      pObj.currentSpeedX = 0;
-      pObj.currentSpeedY = 0;
+      pObj.currentSpeedX = 0; pObj.currentSpeedY = 0;
 
-      // Horizontal mobile platforms
       if (pObj.type === 'mobile' && pObj.moveDirectionX !== undefined && pObj.moveRangeX !== undefined) {
         const prevSpriteX = pObj.sprite.x;
         let nextX = pObj.sprite.x + (DEFAULT_PLATFORM_MOVE_SPEED * pObj.moveDirectionX);
-        let collidedWithOtherPlatform = false;
-
-        const mobilePlatformRect = { x: nextX, y: pObj.sprite.y, width: pObj.width, height: pObj.height };
+        let collided = false;
+        const mobileRect = { x: nextX, y: pObj.sprite.y, width: pObj.width, height: pObj.height };
         for (const otherP of platformObjectsRef.current) {
             if (pObj === otherP) continue;
-            const otherIsSolid = !((otherP.type === 'timed' && !otherP.isVisible) || (otherP.type === 'breakable' && (otherP.isBroken || (otherP.isBreaking && otherP.breakingTimer !== undefined && otherP.breakingTimer <=0) )));
-            if (otherIsSolid) {
-                const otherPlatformRect = { x: otherP.sprite.x, y: otherP.sprite.y, width: otherP.width, height: otherP.height };
-                if (checkCollision(mobilePlatformRect, otherPlatformRect)) {
-                    pObj.moveDirectionX *= -1;
-                    nextX = pObj.sprite.x;
-                    collidedWithOtherPlatform = true;
-                    break;
-                }
+            const otherSolid = !((otherP.type === 'timed' && !otherP.isVisible) || (otherP.type === 'breakable' && (otherP.isBroken || (otherP.isBreaking && otherP.breakingTimer !== undefined && otherP.breakingTimer <=0) )));
+            if (otherSolid) {
+                const otherRect = { x: otherP.sprite.x, y: otherP.sprite.y, width: otherP.width, height: otherP.height };
+                if (checkCollision(mobileRect, otherRect)) { pObj.moveDirectionX *= -1; nextX = pObj.sprite.x; collided = true; break; }
             }
         }
-
-        if (!collidedWithOtherPlatform) {
-            if (pObj.moveDirectionX === 1 && nextX > pObj.initialX + pObj.moveRangeX) {
-                nextX = pObj.initialX + pObj.moveRangeX;
-                pObj.moveDirectionX = -1;
-            } else if (pObj.moveDirectionX === -1 && nextX < pObj.initialX - pObj.moveRangeX) {
-                nextX = pObj.initialX - pObj.moveRangeX;
-                pObj.moveDirectionX = 1;
-            }
+        if (!collided) {
+            if (pObj.moveDirectionX === 1 && nextX > pObj.initialX + pObj.moveRangeX) { nextX = pObj.initialX + pObj.moveRangeX; pObj.moveDirectionX = -1; }
+            else if (pObj.moveDirectionX === -1 && nextX < pObj.initialX - pObj.moveRangeX) { nextX = pObj.initialX - pObj.moveRangeX; pObj.moveDirectionX = 1; }
         }
-        pObj.sprite.x = nextX;
-        pObj.currentSpeedX = pObj.sprite.x - prevSpriteX;
+        pObj.sprite.x = nextX; pObj.currentSpeedX = pObj.sprite.x - prevSpriteX;
       }
 
-      // Vertical mobile platforms
       if (pObj.type === 'vertical_mobile' && pObj.moveDirectionY !== undefined && pObj.moveRangeY !== undefined) {
         const prevSpriteY = pObj.sprite.y;
         let nextY = pObj.sprite.y + (DEFAULT_PLATFORM_MOVE_SPEED * pObj.moveDirectionY);
-        let collidedWithOtherPlatform = false;
-
-        const verticalMobilePlatformRect = { x: pObj.sprite.x, y: nextY, width: pObj.width, height: pObj.height };
+        let collided = false;
+        const verticalMobileRect = { x: pObj.sprite.x, y: nextY, width: pObj.width, height: pObj.height };
         for (const otherP of platformObjectsRef.current) {
             if (pObj === otherP) continue;
-            const otherIsSolid = !((otherP.type === 'timed' && !otherP.isVisible) || (otherP.type === 'breakable' && (otherP.isBroken || (otherP.isBreaking && otherP.breakingTimer !== undefined && otherP.breakingTimer <=0) )));
-            if (otherIsSolid) {
-                const otherPlatformRect = { x: otherP.sprite.x, y: otherP.sprite.y, width: otherP.width, height: otherP.height };
-                if (checkCollision(verticalMobilePlatformRect, otherPlatformRect)) {
-                    pObj.moveDirectionY *= -1;
-                    nextY = pObj.sprite.y;
-                    collidedWithOtherPlatform = true;
-                    break;
-                }
+            const otherSolid = !((otherP.type === 'timed' && !otherP.isVisible) || (otherP.type === 'breakable' && (otherP.isBroken || (otherP.isBreaking && otherP.breakingTimer !== undefined && otherP.breakingTimer <=0) )));
+            if (otherSolid) {
+                const otherRect = { x: otherP.sprite.x, y: otherP.sprite.y, width: otherP.width, height: otherP.height };
+                if (checkCollision(verticalMobileRect, otherRect)) { pObj.moveDirectionY *= -1; nextY = pObj.sprite.y; collided = true; break; }
             }
         }
-
-        if (!collidedWithOtherPlatform) {
-            if (pObj.moveDirectionY === 1 && nextY > pObj.initialY + pObj.moveRangeY) {
-                nextY = pObj.initialY + pObj.moveRangeY;
-                pObj.moveDirectionY = -1;
-            } else if (pObj.moveDirectionY === -1 && nextY < pObj.initialY - pObj.moveRangeY) {
-                nextY = pObj.initialY - pObj.moveRangeY;
-                pObj.moveDirectionY = 1;
-            }
+        if (!collided) {
+            if (pObj.moveDirectionY === 1 && nextY > pObj.initialY + pObj.moveRangeY) { nextY = pObj.initialY + pObj.moveRangeY; pObj.moveDirectionY = -1; }
+            else if (pObj.moveDirectionY === -1 && nextY < pObj.initialY - pObj.moveRangeY) { nextY = pObj.initialY - pObj.moveRangeY; pObj.moveDirectionY = 1; }
         }
-        pObj.sprite.y = nextY;
-        pObj.currentSpeedY = pObj.sprite.y - prevSpriteY;
+        pObj.sprite.y = nextY; pObj.currentSpeedY = pObj.sprite.y - prevSpriteY;
       }
-
 
       if (pObj.type === 'timed' && pObj.timer !== undefined && pObj.isVisible !== undefined && pObj.visibleDuration !== undefined && pObj.hiddenDuration !== undefined) {
         pObj.timer--;
-        if (pObj.timer <= 0) {
-          pObj.isVisible = !pObj.isVisible;
-          pObj.sprite.visible = pObj.isVisible;
-          pObj.timer = pObj.isVisible ? pObj.visibleDuration : pObj.hiddenDuration;
-        }
+        if (pObj.timer <= 0) { pObj.isVisible = !pObj.isVisible; pObj.sprite.visible = pObj.isVisible; pObj.timer = pObj.isVisible ? pObj.visibleDuration : pObj.hiddenDuration; }
       }
 
       if (pObj.type === 'breakable') {
         if (pObj.isBreaking && pObj.breakingTimer !== undefined && pObj.breakingTimer > 0) {
           pObj.breakingTimer--;
           if (pObj.breakingTimer <= 0) {
-            pObj.isBroken = true;
-            pObj.sprite.visible = false;
-            pObj.respawnTimer = BREAKABLE_PLATFORM_RESPAWN_DURATION;
-            pObj.isBreaking = false;
-            if (player.standingOnPlatform === pObj) {
-              player.standingOnPlatform = null;
-              player.onGround = false;
-            }
+            pObj.isBroken = true; pObj.sprite.visible = false; pObj.respawnTimer = BREAKABLE_PLATFORM_RESPAWN_DURATION;
+            pObj.isBreaking = false; if (player.standingOnPlatform === pObj) { player.standingOnPlatform = null; player.onGround = false; }
           }
         } else if (pObj.isBroken && pObj.respawnTimer !== undefined) {
           pObj.respawnTimer--;
-          if (pObj.respawnTimer <= 0) {
-            pObj.isBroken = false;
-            pObj.sprite.visible = true;
-            pObj.isBreaking = false;
-            pObj.breakingTimer = 0;
-          }
+          if (pObj.respawnTimer <= 0) { pObj.isBroken = false; pObj.sprite.visible = true; pObj.isBreaking = false; pObj.breakingTimer = 0; }
         }
       }
     });
 
-    // Player movement with platform
     if (player.onGround && player.standingOnPlatform) {
-      if (player.standingOnPlatform.type === 'mobile' && player.standingOnPlatform.currentSpeedX) {
-        player.x += player.standingOnPlatform.currentSpeedX;
-      }
-      if (player.standingOnPlatform.type === 'vertical_mobile' && player.standingOnPlatform.currentSpeedY) {
-        player.y += player.standingOnPlatform.currentSpeedY;
-      }
+      if (player.standingOnPlatform.currentSpeedX) player.x += player.standingOnPlatform.currentSpeedX;
+      if (player.standingOnPlatform.currentSpeedY) player.y += player.standingOnPlatform.currentSpeedY;
     }
     
-
     const wasCrouching = player.isCrouching;
     player.isCrouching = (keys.has('KeyS') || keys.has('ArrowDown')) && player.onGround;
-
     const targetHeight = player.isCrouching ? PLAYER_CROUCH_HEIGHT : PLAYER_HEIGHT;
-    const heightDifference = PLAYER_HEIGHT - PLAYER_CROUCH_HEIGHT;
+    const heightDiff = PLAYER_HEIGHT - PLAYER_CROUCH_HEIGHT;
 
     if (player.height !== targetHeight) {
-        if (player.isCrouching && !wasCrouching) { // Started crouching
-            player.y += heightDifference;
-            player.height = PLAYER_CROUCH_HEIGHT;
-        } else if (!player.isCrouching && wasCrouching) { // Stopped crouching
-            const uncrouchCheckRect = { x: player.x, y: player.y - heightDifference, width: player.width, height: PLAYER_HEIGHT };
+        if (player.isCrouching && !wasCrouching) { player.y += heightDiff; player.height = PLAYER_CROUCH_HEIGHT; }
+        else if (!player.isCrouching && wasCrouching) {
+            const uncrouchRect = { x: player.x, y: player.y - heightDiff, width: player.width, height: PLAYER_HEIGHT };
             let canUncrouch = true;
-            for (const pObj of platformObjectsRef.current) {
-                const platformRect = { x: pObj.sprite.x, y: pObj.sprite.y, width: pObj.width, height: pObj.height };
-                 const isPlatformSolid = !( (pObj.type === 'timed' && !pObj.isVisible) || (pObj.type === 'breakable' && (pObj.isBroken || pObj.isBreaking) ) );
-                if (isPlatformSolid && checkCollision(uncrouchCheckRect, platformRect)) {
-                    canUncrouch = false;
-                    break;
-                }
+            for (const p of platformObjectsRef.current) {
+                const pRect = { x: p.sprite.x, y: p.sprite.y, width: p.width, height: p.height };
+                const pSolid = !((p.type === 'timed' && !p.isVisible) || (p.type === 'breakable' && (p.isBroken || p.isBreaking)));
+                if (pSolid && checkCollision(uncrouchRect, pRect)) { canUncrouch = false; break; }
             }
-            if (canUncrouch) {
-                player.y -= heightDifference;
-                player.height = PLAYER_HEIGHT;
-            } else {
-                 player.isCrouching = true; // Cannot uncrouch, remain crouching
-            }
+            if (canUncrouch) { player.y -= heightDiff; player.height = PLAYER_HEIGHT; }
+            else { player.isCrouching = true; }
         }
     }
 
     player.vx = 0;
-    if (!player.isCrouching) { // No horizontal movement while crouching
+    if (!player.isCrouching) {
         if (keys.has('KeyA') || keys.has('ArrowLeft')) player.vx = -PLAYER_SPEED;
         if (keys.has('KeyD') || keys.has('ArrowRight')) player.vx = PLAYER_SPEED;
     }
 
     if ((keys.has('KeyW') || keys.has('ArrowUp') || keys.has('Space')) && player.onGround && !player.isCrouching) {
-      player.vy = -JUMP_FORCE;
-      player.isJumping = true;
-      player.onGround = false;
-      player.standingOnPlatform = null;
-      if (jumpSoundRef.current) {
-        jumpSoundRef.current.currentTime = 0;
-        jumpSoundRef.current.play().catch(error => console.warn("Jump sound play failed:", error));
-      }
+      player.vy = -JUMP_FORCE; player.isJumping = true; player.onGround = false; player.standingOnPlatform = null;
+      if (jumpSoundRef.current) { jumpSoundRef.current.currentTime = 0; jumpSoundRef.current.play().catch(e => console.warn("Jump sound err:", e)); }
     }
 
-    if (!player.onGround) {
-        player.vy += GRAVITY;
-    } else {
-       if (player.vy < 0 && !player.isJumping) player.vy = 0; //Should not happen if onGround is true
-       else if (player.vy > 0) player.vy =0; // Stop downward velocity if onGround
-    }
+    if (!player.onGround) player.vy += GRAVITY;
+    else { if (player.vy > 0) player.vy = 0; }
 
-    const prevPlayerX = player.x;
-    player.x += player.vx;
-    const prevPlayerY = player.y;
-    player.y += player.vy;
+    const prevPlayerX = player.x; player.x += player.vx;
+    const prevPlayerY = player.y; player.y += player.vy;
 
-    player.onGround = false; // Assume not on ground until a collision confirms it
-    if (player.standingOnPlatform) { // Check if the platform player was on is still valid
+    player.onGround = false;
+    if (player.standingOnPlatform) {
         const p = player.standingOnPlatform;
         if ((p.type === 'timed' && !p.isVisible) || (p.type === 'breakable' && p.isBroken)) {
-            player.standingOnPlatform = null; // Platform became invalid
+            player.standingOnPlatform = null;
         }
     }
 
@@ -556,161 +442,103 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
       return true;
     });
 
-    // Horizontal collision
     for (const pObj of collidablePlatforms) {
-        const platformRect = { x: pObj.sprite.x, y: pObj.sprite.y, width: pObj.width, height: pObj.height };
-        const playerHorizontalCheckRect = { x: player.x, y: prevPlayerY, width: player.width, height: player.height }; // Use prevPlayerY for horizontal check
-
-        if (checkCollision(playerHorizontalCheckRect, platformRect)) {
-            if (player.vx > 0) { // Moving right
-                player.x = platformRect.x - player.width;
-            } else if (player.vx < 0) { // Moving left
-                player.x = platformRect.x + platformRect.width;
-            }
-            player.vx = 0; // Stop horizontal movement
+        const pRect = { x: pObj.sprite.x, y: pObj.sprite.y, width: pObj.width, height: pObj.height };
+        const playerHRect = { x: player.x, y: prevPlayerY, width: player.width, height: player.height };
+        if (checkCollision(playerHRect, pRect)) {
+            if (player.vx > 0) player.x = pRect.x - player.width;
+            else if (player.vx < 0) player.x = pRect.x + pRect.width;
+            player.vx = 0;
         }
     }
 
-    // Vertical collision
     for (const pObj of collidablePlatforms) {
-        const platformRect = { x: pObj.sprite.x, y: pObj.sprite.y, width: pObj.width, height: pObj.height };
-        const playerVerticalCheckRect = { x: player.x, y: player.y, width: player.width, height: player.height }; // Use current player.x for vertical check
-
-        if (checkCollision(playerVerticalCheckRect, platformRect)) {
-            if (player.vy > 0) { // Moving down (falling or landing)
-                // Check if player was above or at the same level as platform top in previous frame
-                if (prevPlayerY + player.height <= platformRect.y + 1) { // +1 for a little tolerance
-                    player.y = platformRect.y - player.height;
-                    player.vy = 0;
-                    player.isJumping = false;
-                    player.onGround = true;
+        const pRect = { x: pObj.sprite.x, y: pObj.sprite.y, width: pObj.width, height: pObj.height };
+        const playerVRect = { x: player.x, y: player.y, width: player.width, height: player.height };
+        if (checkCollision(playerVRect, pRect)) {
+            if (player.vy > 0) {
+                if (prevPlayerY + player.height <= pRect.y + 1) {
+                    player.y = pRect.y - player.height; player.vy = 0; player.isJumping = false; player.onGround = true;
                     player.standingOnPlatform = pObj;
                     if (pObj.type === 'breakable' && !pObj.isBroken && !pObj.isBreaking) {
-                        pObj.isBreaking = true;
-                        pObj.breakingTimer = BREAKABLE_PLATFORM_BREAK_DELAY;
+                        pObj.isBreaking = true; pObj.breakingTimer = BREAKABLE_PLATFORM_BREAK_DELAY;
                     }
                 }
-            } else if (player.vy < 0) { // Moving up (jumping)
-                 // Check if player was below or at the same level as platform bottom
-                if (prevPlayerY >= platformRect.y + platformRect.height -1 ) { // -1 for tolerance
-                    player.y = platformRect.y + platformRect.height;
-                    player.vy = 0; // Stop upward movement
+            } else if (player.vy < 0) {
+                if (prevPlayerY >= pRect.y + pRect.height - 1) {
+                    player.y = pRect.y + pRect.height; player.vy = 0;
                 }
             }
         }
     }
 
-    // Re-check if still on a valid platform after all movements (especially if platform moved away)
     if (!player.onGround && player.standingOnPlatform) {
-        let stillOnValidPlatform = false;
-        const p = player.standingOnPlatform;
+        let stillOn = false; const p = player.standingOnPlatform;
         if (!((p.type === 'timed' && !p.isVisible) || (p.type === 'breakable' && p.isBroken))) {
-             const platformRect = { x: p.sprite.x, y: p.sprite.y, width: p.width, height: p.height };
-             const playerFeetY = player.y + player.height;
-             // Check if player is horizontally aligned and vertically just above the platform
-             if (player.x + player.width > platformRect.x &&
-                 player.x < platformRect.x + platformRect.width &&
-                 playerFeetY >= platformRect.y && playerFeetY < platformRect.y + Math.abs(player.vy) + GRAVITY +1 ) { // Small tolerance for landing
-                 player.y = platformRect.y - player.height; // Snap to platform top
-                 player.vy = 0;
-                 player.isJumping = false;
-                 player.onGround = true;
-                 stillOnValidPlatform = true;
+             const pRect = { x: p.sprite.x, y: p.sprite.y, width: p.width, height: p.height };
+             const pFeetY = player.y + player.height;
+             if (player.x + player.width > pRect.x && player.x < pRect.x + pRect.width &&
+                 pFeetY >= pRect.y && pFeetY < pRect.y + Math.abs(player.vy) + GRAVITY + 1) {
+                 player.y = pRect.y - player.height; player.vy = 0; player.isJumping = false;
+                 player.onGround = true; stillOn = true;
              }
         }
-        if (!stillOnValidPlatform) {
-            player.standingOnPlatform = null; // No longer on this platform
-        }
+        if (!stillOn) player.standingOnPlatform = null;
     }
 
-
-    player.sprite.x = player.x;
-    player.sprite.y = player.y;
-    player.sprite.clear();
-    player.sprite.rect(0, 0, player.width, player.height).fill(PLAYER_COLOR);
+    player.sprite.x = player.x; player.sprite.y = player.y;
+    player.sprite.clear(); player.sprite.rect(0, 0, player.width, player.height).fill(PLAYER_COLOR);
 
     let gameWorldMaxY = 1000; 
     if (parsedData && parsedData.platforms.length > 0) {
-         gameWorldMaxY = Math.max(...parsedData.platforms.map(p => p.y + DEFAULT_PLATFORM_HEIGHT)) + 200; // Some buffer below lowest platform
+         gameWorldMaxY = Math.max(...parsedData.platforms.map(p => p.y + DEFAULT_PLATFORM_HEIGHT)) + 200;
     }
-    const fallBoundary = gameWorldMaxY;
-    if (player.y > fallBoundary) {
-        console.log(`GameScreen: Player fell off map for level ${levelId}. Respawning.`);
-        setDeathCount(prevCount => prevCount + 1);
-        if (deathSoundRef.current) {
-            deathSoundRef.current.currentTime = 0;
-            deathSoundRef.current.play().catch(error => console.warn("Death sound play failed:", error));
-        }
-        // Reset player to start of level
+    if (player.y > gameWorldMaxY) {
+        setDeathCount(prev => prev + 1);
+        if (deathSoundRef.current) { deathSoundRef.current.currentTime = 0; deathSoundRef.current.play().catch(e => console.warn("Death sound err:", e)); }
         if (platformObjectsRef.current.length > 0) {
-            const respawnPlatform = platformObjectsRef.current.find(p => p.type === 'standard' || !p.type) || platformObjectsRef.current[0];
-            player.x = respawnPlatform.sprite.x + respawnPlatform.width / 2 - player.width / 2;
-            player.y = respawnPlatform.sprite.y - PLAYER_HEIGHT;
-        } else {
-             player.x = 50; player.y = 100; // Default if no platforms
-        }
-        player.vy = 0;
-        player.isJumping = false;
-        player.onGround = false; 
-        player.standingOnPlatform = null;
-        
-        player.height = PLAYER_HEIGHT;
-        player.isCrouching = false;
+            const respawnP = platformObjectsRef.current.find(p => p.type === 'standard' || !p.type) || platformObjectsRef.current[0];
+            player.x = respawnP.sprite.x + respawnP.width / 2 - player.width / 2;
+            player.y = respawnP.sprite.y - PLAYER_HEIGHT;
+        } else { player.x = 50; player.y = 100; }
+        player.vy = 0; player.isJumping = false; player.onGround = false; player.standingOnPlatform = null;
+        player.height = PLAYER_HEIGHT; player.isCrouching = false;
     }
 
-    // Check for level completion
-    if (lastPlatformRef.current &&
-        player.standingOnPlatform === lastPlatformRef.current &&
-        player.onGround && 
-        !newLevelRequestedRef.current &&
-        onRequestNewLevel) {
-      console.log(`GameScreen: Player is ON the last platform of level ${levelId}. Platform Type: ${lastPlatformRef.current.type}. newLevelRequestedRef: ${newLevelRequestedRef.current}`);
-      
-      if (winSoundRef.current) {
-        winSoundRef.current.currentTime = 0;
-        winSoundRef.current.play().catch(error => console.warn("Win sound play failed:", error));
-      }
-      setIsTransitioningLevel(true); 
+    if (lastPlatformRef.current && player.standingOnPlatform === lastPlatformRef.current && player.onGround && 
+        !newLevelRequestedRef.current && onRequestNewLevel) {
+      if (winSoundRef.current) { winSoundRef.current.currentTime = 0; winSoundRef.current.play().catch(e => console.warn("Win sound err:", e)); }
       newLevelRequestedRef.current = true; 
-
-      console.log(`GameScreen: Calling onRequestNewLevel() for level ${levelId}. isTransitioningLevel set to true.`);
+      console.log(`GameScreen: Calling onRequestNewLevel() for level ${levelId}.`);
       onRequestNewLevel(); 
     }
 
-    // Camera follow logic
     if (app && gameContainer) {
         const scale = gameContainer.scale.x; 
-        
         let playerFocusY = player.y + player.height / 2;
-
-        if (player.isCrouching) {
-            playerFocusY = player.y + (PLAYER_CROUCH_HEIGHT / 2) + CROUCH_CAMERA_VIEW_ADJUST_WORLD;
-        }
-
+        if (player.isCrouching) { playerFocusY = player.y + (PLAYER_CROUCH_HEIGHT / 2) + CROUCH_CAMERA_VIEW_ADJUST_WORLD; }
         const targetX = app.screen.width / 2 - (player.x + player.width / 2) * scale;
         const targetY = app.screen.height / 2 - playerFocusY * scale;
-
         gameContainer.x += (targetX - gameContainer.x) * CAMERA_LERP_FACTOR;
         gameContainer.y += (targetY - gameContainer.y) * CAMERA_LERP_FACTOR;
     }
 
-  }, [parsedData, onRequestNewLevel, levelId, isTransitioningLevel]); 
+  }, [parsedData, onRequestNewLevel, levelId]); 
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => keysPressedRef.current.add(event.code);
     const handleKeyUp = (event: KeyboardEvent) => keysPressedRef.current.delete(event.code);
-
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
 
     const app = pixiAppRef.current;
     if (app && app.ticker) {
       app.ticker.remove(gameLoop); 
-      if (!isTransitioningLevel) { 
+      if (!isLoading) { 
         app.ticker.add(gameLoop);
-        console.log(`GameScreen: gameLoop added to ticker for levelId ${levelId}.`);
+        console.log(`GameScreen: gameLoop added to ticker for levelId ${levelId}. isLoading: ${isLoading}`);
       } else {
-        console.log(`GameScreen: gameLoop NOT added to ticker for levelId ${levelId} (isTransitioningLevel: true).`);
+        console.log(`GameScreen: gameLoop NOT added to ticker for levelId ${levelId} (isLoading: ${isLoading}).`);
       }
     }
 
@@ -722,7 +550,7 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
         console.log(`GameScreen: gameLoop removed from ticker during cleanup for levelId ${levelId}.`);
       }
     };
-  }, [gameLoop, parsedData, levelId, isTransitioningLevel]);
+  }, [gameLoop, parsedData, levelId, isLoading]);
 
 
   return (
@@ -739,15 +567,23 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
           aria-label="Game canvas"
           data-ai-hint="gameplay screenshot"
         />
-        {isTransitioningLevel && (
+        {isLoading && (
           <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center text-center text-foreground z-20 p-4 rounded-b-lg">
             <Loader2 className="w-12 h-12 animate-spin text-primary mb-4" />
-            <p className="text-2xl font-bold mb-2">
-              Level {levelId} Complete!
-            </p>
-            <p className="text-lg">
-              Generating Level {levelId ? levelId + 1 : 'Next'}...
-            </p>
+            {levelId != null && levelId > 0 ? (
+              <>
+                <p className="text-2xl font-bold mb-2">
+                  Level {levelId} Complete!
+                </p>
+                <p className="text-lg">
+                  Generating Level {levelId + 1}...
+                </p>
+              </>
+            ) : (
+              <p className="text-lg">
+                Loading Game... Generating Level 1...
+              </p>
+            )}
           </div>
         )}
       </CardContent>
@@ -756,7 +592,3 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
 };
 
 export default GameScreen;
-    
-
-      
-
