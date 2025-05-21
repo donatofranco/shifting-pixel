@@ -73,6 +73,8 @@ const generateLevelPrompt = ai.definePrompt({
   - Obstacle Density: {{{obstacleDensity}}} (If low, you might generate very few or no obstacles)
 
   Return the level data as a JSON string. The "platforms" array MUST include a "type" field for each platform.
+  IMPORTANT: Your response MUST consist ONLY of the valid JSON string. Do not include any explanations, introductions, summaries, or any other text before or after the JSON data. The entire response must be the raw JSON content itself.
+
   Example JSON Structure:
   {
     "platforms": [
@@ -89,6 +91,7 @@ const generateLevelPrompt = ai.definePrompt({
     ]
   }
   Remember, the "obstacles" array is optional and might be empty, especially for lower obstacle densities. Focus on creative, solvable, and somewhat unpredictable platform arrangements with a tendency towards challenging horizontal jumps.
+  Your output must be ONLY the JSON string.
   `,
 });
 
@@ -101,6 +104,8 @@ const generateLevelFlow = ai.defineFlow(
   },
   async input => {
     const {output} = await generateLevelPrompt(input);
+    // We could add a trim() here just in case, but ideally the model respects the prompt.
+    // For example: if (output && output.levelData) output.levelData = output.levelData.trim();
     return output!;
   }
 );
