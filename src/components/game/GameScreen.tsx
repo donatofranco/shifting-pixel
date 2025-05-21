@@ -21,8 +21,7 @@ interface GameScreenProps {
   onRequestNewLevel?: () => void;
   levelId?: number; 
   isLoading: boolean;
-  onManualLevelGenerated: (data: GenerateLevelOutput) => void;
-  setIsLoadingLevelFromForm: (isLoading: boolean) => void;
+  onManualGenerateRequested: (formData: Pick<GenerateLevelInput, 'difficulty'>) => Promise<void>;
   defaultLevelParams: Pick<GenerateLevelInput, 'difficulty'>;
   gameStarted: boolean;
   onStartGame: (difficulty: GenerateLevelInput['difficulty']) => void;
@@ -115,8 +114,7 @@ const GameScreen: FC<GameScreenProps> = ({
   onRequestNewLevel, 
   levelId = 0, 
   isLoading,
-  onManualLevelGenerated,
-  setIsLoadingLevelFromForm,
+  onManualGenerateRequested,
   defaultLevelParams,
   gameStarted,
   onStartGame,
@@ -167,29 +165,41 @@ const GameScreen: FC<GameScreenProps> = ({
   }, [levelOutput, levelId, gameStarted]);
 
   useEffect(() => {
-    if (!gameStarted) return; // Don't run if game hasn't started
+    if (!gameStarted) return; 
     console.log(`GameScreen: useEffect for levelId. Current levelId: ${levelId}, prevLevelIdRef: ${prevLevelIdRef.current}`);
-    if (levelId !== undefined && levelId > 0 && prevLevelIdRef.current !== levelId) {
-        if (prevLevelIdRef.current !== undefined && !(prevLevelIdRef.current === 0 && levelId ===1) ) { 
-            newLevelRequestedRef.current = false;
-            console.log(`GameScreen: New level detected (ID: ${levelId} from prev ${prevLevelIdRef.current}). newLevelRequestedRef reset.`);
-        }
+    
+    // This effect runs when levelId changes, indicating a new level is starting (or game is starting).
+    // Reset newLevelRequestedRef to allow the next level completion to trigger.
+    // Only reset if it's not the very first load (where prevLevelIdRef would be undefined).
+    // And only if levelId is now > 0 (meaning a level is actually loaded).
+    if (levelId > 0 && prevLevelIdRef.current !== undefined && prevLevelIdRef.current !== levelId) {
+        newLevelRequestedRef.current = false;
+        console.log(`GameScreen: New level detected (ID: ${levelId} from prev ${prevLevelIdRef.current}). newLevelRequestedRef reset.`);
+    }
+
+    if (levelId > 0) { // For any actual loaded level (initial or subsequent)
         setElapsedTime(0);
         levelStartTimeRef.current = Date.now();
+        console.log(`GameScreen: Timer reset and started for Level ${levelId}.`);
+    } else if (levelId === 0 && gameStarted) { // Game started, but initial level (level 1) is still loading
+        setElapsedTime(0); // Ensure timer is 0
+        levelStartTimeRef.current = null; // Don't start timer until level 1 actually loads
+        console.log(`GameScreen: Game starting, Level 1 loading. Timer reset, not started.`);
     }
+
     prevLevelIdRef.current = levelId;
   }, [levelId, gameStarted]);
 
   useEffect(() => {
-    // PixiJS setup, only if game has started and not already initialized
     if (!gameStarted || !pixiContainerRef.current || pixiAppRef.current) {
-      if (!gameStarted && pixiAppRef.current) { // If game stops, destroy Pixi app
+      if (!gameStarted && pixiAppRef.current) { 
         pixiAppRef.current.destroy(true, { children: true, texture: true, baseTexture: true });
         pixiAppRef.current = null;
         gameContainerRef.current = null;
         playerRef.current = null;
         platformObjectsRef.current = [];
         lastPlatformRef.current = null;
+        console.log("GameScreen: PixiJS app destroyed because game has not started.");
       }
       return;
     }
@@ -207,27 +217,29 @@ const GameScreen: FC<GameScreenProps> = ({
         antialias: false,
       });
 
-      if (pixiContainerRef.current) { // Ensure ref is still valid
+      if (pixiContainerRef.current) { 
         while (pixiContainerRef.current.firstChild) {
           pixiContainerRef.current.removeChild(pixiContainerRef.current.firstChild);
         }
         pixiContainerRef.current.appendChild(app.view as HTMLCanvasElement);
       }
       pixiAppRef.current = app;
+      console.log("GameScreen: PixiJS Application initialized.");
 
       const gameContainer = new PIXI.Container();
       app.stage.addChild(gameContainer);
       gameContainerRef.current = gameContainer;
 
-      // Load sounds
       jumpSoundRef.current = new Audio('/sounds/jump.wav');
       deathSoundRef.current = new Audio('/sounds/death.wav');
       winSoundRef.current = new Audio('/sounds/win.wav');
 
-      if (levelId > 0) { 
-          levelStartTimeRef.current = Date.now();
+      // Timer for level 1 will start when levelId prop becomes 1 (after generation)
+      if (levelId === 0 && gameStarted) { // Initial level is about to be loaded
+        levelStartTimeRef.current = null; 
+      } else if (levelId > 0) {
+        levelStartTimeRef.current = Date.now(); // For subsequent levels or if already on level 1+
       }
-
     })();
     
 
@@ -239,15 +251,16 @@ const GameScreen: FC<GameScreenProps> = ({
         playerRef.current = null;
         platformObjectsRef.current = [];
         lastPlatformRef.current = null;
+        console.log("GameScreen: PixiJS app destroyed on cleanup.");
       }
       if (jumpSoundRef.current) jumpSoundRef.current.pause(); jumpSoundRef.current = null;
       if (deathSoundRef.current) deathSoundRef.current.pause(); deathSoundRef.current = null;
       if (winSoundRef.current) winSoundRef.current.pause(); winSoundRef.current = null;
     };
-  }, [gameStarted]); // Rerun if gameStarted changes
+  }, [gameStarted]); 
 
   useEffect(() => {
-    if (!gameStarted) return; // Don't build level if game hasn't started
+    if (!gameStarted) return; 
 
     const app = pixiAppRef.current;
     const gameContainer = gameContainerRef.current;
@@ -384,7 +397,7 @@ const GameScreen: FC<GameScreenProps> = ({
     }
     if (player.sprite) player.sprite.visible = true;
 
-    if (levelStartTimeRef.current && !isLoading && !isFormPopoverOpen && !isControlsPopoverOpen) {
+    if (levelStartTimeRef.current && levelId > 0 && !isLoading && !isFormPopoverOpen && !isControlsPopoverOpen) {
         const currentTime = (Date.now() - levelStartTimeRef.current) / 1000;
         setElapsedTime(currentTime);
     }
@@ -399,7 +412,7 @@ const GameScreen: FC<GameScreenProps> = ({
         const mobileRect = { x: nextX, y: pObj.sprite.y, width: pObj.width, height: pObj.height };
         for (const otherP of platformObjectsRef.current) {
             if (pObj === otherP) continue;
-            const otherSolid = !((otherP.type === 'timed' && !otherP.isVisible) || (otherP.type === 'breakable' && (otherP.isBroken || (otherP.isBreaking && otherP.breakingTimer !== undefined && p.breakingTimer <=0) )));
+            const otherSolid = !((otherP.type === 'timed' && !otherP.isVisible) || (otherP.type === 'breakable' && (otherP.isBroken || (otherP.isBreaking && otherP.breakingTimer !== undefined && otherP.breakingTimer <=0) )));
             if (otherSolid) {
                 const otherRect = { x: otherP.sprite.x, y: otherP.sprite.y, width: otherP.width, height: otherP.height };
                 if (checkCollision(mobileRect, otherRect)) { pObj.moveDirectionX *= -1; nextX = pObj.sprite.x; collided = true; break; }
@@ -419,7 +432,7 @@ const GameScreen: FC<GameScreenProps> = ({
         const verticalMobileRect = { x: pObj.sprite.x, y: nextY, width: pObj.width, height: pObj.height };
         for (const otherP of platformObjectsRef.current) {
             if (pObj === otherP) continue;
-            const otherSolid = !((otherP.type === 'timed' && !otherP.isVisible) || (otherP.type === 'breakable' && (otherP.isBroken || (otherP.isBreaking && otherP.breakingTimer !== undefined && p.breakingTimer <=0) )));
+            const otherSolid = !((otherP.type === 'timed' && !otherP.isVisible) || (otherP.type === 'breakable' && (otherP.isBroken || (otherP.isBreaking && otherP.breakingTimer !== undefined && otherP.breakingTimer <=0) )));
             if (otherSolid) {
                 const otherRect = { x: otherP.sprite.x, y: otherP.sprite.y, width: otherP.width, height: otherP.height };
                 if (checkCollision(verticalMobileRect, otherRect)) { pObj.moveDirectionY *= -1; nextY = pObj.sprite.y; collided = true; break; }
@@ -608,11 +621,8 @@ const GameScreen: FC<GameScreenProps> = ({
       app.ticker.remove(gameLoop); 
       if (!isLoading && !isFormPopoverOpen && !isControlsPopoverOpen) { 
         app.ticker.add(gameLoop);
-        console.log(`GameScreen: gameLoop added to ticker for levelId ${levelId}. isLoading: ${isLoading}, isFormPopoverOpen: ${isFormPopoverOpen}, isControlsPopoverOpen: ${isControlsPopoverOpen}`);
-      } else {
-        console.log(`GameScreen: gameLoop NOT added to ticker for levelId ${levelId} (isLoading: ${isLoading}, isFormPopoverOpen: ${isFormPopoverOpen}, isControlsPopoverOpen: ${isControlsPopoverOpen}).`);
       }
-    } else if (app && app.ticker) { // If game not started, ensure gameloop is removed
+    } else if (app && app.ticker) { 
         app.ticker.remove(gameLoop);
     }
 
@@ -621,13 +631,12 @@ const GameScreen: FC<GameScreenProps> = ({
       window.removeEventListener('keyup',handleKeyUp);
       if (app && app.ticker) {
         app.ticker.remove(gameLoop);
-        console.log(`GameScreen: gameLoop removed from ticker during cleanup for levelId ${levelId}.`);
       }
     };
   }, [gameLoop, parsedData, levelId, isLoading, isFormPopoverOpen, isControlsPopoverOpen, gameStarted]);
 
-  const handlePopoverFormSubmit = (data: GenerateLevelOutput) => {
-    onManualLevelGenerated(data);
+  const handlePopoverFormSubmit = async (formData: Pick<GenerateLevelInput, 'difficulty'>) => {
+    await onManualGenerateRequested(formData);
     setIsFormPopoverOpen(false); 
   };
 
@@ -708,8 +717,7 @@ const GameScreen: FC<GameScreenProps> = ({
             <PopoverContent className="w-80 z-50 bg-card border-accent shadow-lg p-0">
                 <div className="p-4">
                     <LevelGeneratorForm
-                        onLevelGenerated={handlePopoverFormSubmit}
-                        setIsLoadingLevel={setIsLoadingLevelFromForm}
+                        onGenerateRequested={handlePopoverFormSubmit}
                         initialValues={defaultLevelParams}
                         onFormSubmitted={() => setIsFormPopoverOpen(false)}
                     />
@@ -728,20 +736,18 @@ const GameScreen: FC<GameScreenProps> = ({
         {isLoading && (
           <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center text-center text-foreground z-20 p-4 rounded-b-lg">
             <Loader2 className="w-12 h-12 animate-spin text-primary mb-4" />
-            {levelId > 0 && gameStarted ? (
-              <>
-                <p className="text-2xl font-bold mb-2">
-                  Level {levelId} Complete!
-                </p>
-                <p className="text-lg">
-                  Generating Level {levelId + 1}...
-                </p>
-              </>
-            ) : (
-              <p className="text-lg">
-                Loading Game... Generating Level 1...
-              </p>
-            )}
+            { (levelId === 0 && gameStarted) ? ( 
+                <p className="text-lg">Loading Game... Generating Level 1...</p>
+             ) : (
+                gameStarted && levelId > 0 ? (
+                    <>
+                        <p className="text-2xl font-bold mb-2">Level {levelId} Complete!</p>
+                        <p className="text-lg">Generating Level {levelId + 1}...</p>
+                    </>
+                ) : (
+                     <p className="text-lg">Loading...</p> // Fallback, should ideally not be hit with current logic
+                )
+             )}
           </div>
         )}
       </CardContent>
@@ -750,3 +756,5 @@ const GameScreen: FC<GameScreenProps> = ({
 };
 
 export default GameScreen;
+
+    

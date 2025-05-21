@@ -25,10 +25,10 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { handleGenerateLevelAction } from '@/app/actions';
-import type { GenerateLevelInput, GenerateLevelOutput } from '@/ai/flows/generate-level';
+// Removed direct import of handleGenerateLevelAction
+import type { GenerateLevelInput } from '@/ai/flows/generate-level';
 import { Loader2 } from 'lucide-react';
-import { useToast } from "@/hooks/use-toast";
+// Removed useToast as HomePage will handle toasts for manual generation
 
 // Simplified form schema, only difficulty
 const formSchema = z.object({
@@ -39,20 +39,18 @@ const formSchema = z.object({
 type LevelGeneratorFormValues = z.infer<typeof formSchema>;
 
 interface LevelGeneratorFormProps {
-  onLevelGenerated: (data: GenerateLevelOutput) => void;
-  setIsLoadingLevel: (isLoading: boolean) => void;
-  initialValues?: Pick<GenerateLevelInput, 'difficulty'>; // Only difficulty needed for initial values
+  onGenerateRequested: (formData: LevelGeneratorFormValues) => Promise<void>; // Changed prop name
+  initialValues?: Pick<GenerateLevelInput, 'difficulty'>; 
   onFormSubmitted?: () => void;
 }
 
 const LevelGeneratorForm: FC<LevelGeneratorFormProps> = ({ 
-    onLevelGenerated, 
-    setIsLoadingLevel, 
+    onGenerateRequested, 
     initialValues,
     onFormSubmitted 
 }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { toast } = useToast();
+  // Removed toast from here
 
   const form = useForm<LevelGeneratorFormValues>({
     resolver: zodResolver(formSchema),
@@ -69,38 +67,18 @@ const LevelGeneratorForm: FC<LevelGeneratorFormProps> = ({
 
   const onSubmit: SubmitHandler<LevelGeneratorFormValues> = async (values) => {
     setIsSubmitting(true);
-    setIsLoadingLevel(true);
     try {
-      // The 'values' here only has 'difficulty'.
-      // handleGenerateLevelAction will now derive the other parameters.
-      const result = await handleGenerateLevelAction(values); 
-      if ('error' in result) {
-        console.error("Generation error:", result.error);
-        toast({
-          variant: "destructive",
-          title: "Level Generation Failed",
-          description: result.error || "An unknown error occurred.",
-        });
-      } else {
-        onLevelGenerated(result);
-        toast({
-          title: "Level Generated Manually!",
-          description: "The new level is ready for play.",
-        });
-        if (onFormSubmitted) {
-            onFormSubmitted();
-        }
+      await onGenerateRequested(values); // Call the new prop
+      // Toasting and state updates (isLoadingLevel, generatedLevel, levelCount) are now handled by HomePage
+      if (onFormSubmitted) {
+          onFormSubmitted();
       }
     } catch (error) {
-      console.error("Unexpected error submitting form:", error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "An unexpected error occurred while generating the level.",
-      });
+      // Error handling for the generation process itself should be in HomePage
+      // This form's error handling is now minimal, mostly for the submit process if needed
+      console.error("Error during onGenerateRequested call:", error);
     } finally {
       setIsSubmitting(false);
-      setIsLoadingLevel(false);
     }
   };
 
@@ -153,3 +131,5 @@ const LevelGeneratorForm: FC<LevelGeneratorFormProps> = ({
 };
 
 export default LevelGeneratorForm;
+
+    
