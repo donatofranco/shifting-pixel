@@ -158,27 +158,29 @@ const GameScreen: FC<GameScreenProps> = ({
       console.log("GameScreen: New levelOutput received, parsing data for levelId:", levelId);
       return parseLevelData(levelOutput.levelData);
     }
-    console.log("GameScreen: gameStarted is false or levelOutput is null for levelId:", levelId);
+    // console.log("GameScreen: gameStarted is false or levelOutput is null for levelId:", levelId); // Too noisy
     return null;
   }, [levelOutput, levelId, gameStarted]);
 
   useEffect(() => {
     if (!gameStarted) return;
-    console.log(`GameScreen: useEffect for levelId. Current levelId: ${levelId}, prevLevelIdRef: ${prevLevelIdRef.current}`);
+    // console.log(`GameScreen: useEffect for levelId. Current levelId: ${levelId}, prevLevelIdRef: ${prevLevelIdRef.current}`);
 
     if (levelId > 0 && prevLevelIdRef.current !== undefined && prevLevelIdRef.current !== levelId) {
         newLevelRequestedRef.current = false;
-        console.log(`GameScreen: New level detected (ID: ${levelId} from prev ${prevLevelIdRef.current}). newLevelRequestedRef reset.`);
+        // console.log(`GameScreen: New level detected (ID: ${levelId} from prev ${prevLevelIdRef.current}). newLevelRequestedRef reset.`);
     }
 
     if (levelId > 0) {
         setElapsedTime(0);
         levelStartTimeRef.current = Date.now();
-        console.log(`GameScreen: Timer reset and started for Level ${levelId}.`);
+        // console.log(`GameScreen: Timer reset and started for Level ${levelId}.`);
     } else if (levelId === 0 && gameStarted) {
+        // This case handles when game starts, and level 1 is being generated.
+        // Timer is reset but not started until levelId > 0 (level 1 is loaded)
         setElapsedTime(0);
-        levelStartTimeRef.current = null;
-        console.log(`GameScreen: Game starting, Level 1 loading. Timer reset, not started.`);
+        levelStartTimeRef.current = null; 
+        // console.log(`GameScreen: Game starting or manual reset, Level 1 loading. Timer reset, not started.`);
     }
 
     prevLevelIdRef.current = levelId;
@@ -231,10 +233,11 @@ const GameScreen: FC<GameScreenProps> = ({
       deathSoundRef.current = new Audio('/sounds/death.wav');
       winSoundRef.current = new Audio('/sounds/win.wav');
 
-      if (levelId === 0 && gameStarted) {
-        levelStartTimeRef.current = null;
-      } else if (levelId > 0) {
+      // Timer logic moved to levelId effect
+      if (levelId > 0) { // If a level (e.g. level 1) is already loaded when pixi initializes
         levelStartTimeRef.current = Date.now();
+      } else {
+        levelStartTimeRef.current = null; // No level loaded yet
       }
     })();
 
@@ -244,14 +247,14 @@ const GameScreen: FC<GameScreenProps> = ({
       if (deathSoundRef.current) deathSoundRef.current.pause(); deathSoundRef.current = null;
       if (winSoundRef.current) winSoundRef.current.pause(); winSoundRef.current = null;
     };
-  }, [gameStarted, levelId]);
+  }, [gameStarted, levelId]); // Added levelId dependency to re-evaluate timer start if pixi init happens after levelId is already set
 
   useEffect(() => {
     if (!gameStarted) return;
 
     const app = pixiAppRef.current;
     const gameContainer = gameContainerRef.current;
-    console.log("GameScreen: useEffect for parsedData, renderer dimensions, or levelId. Current levelId:", levelId);
+    // console.log("GameScreen: useEffect for parsedData, renderer dimensions, or levelId. Current levelId:", levelId);
 
     if (app && gameContainer && pixiContainerRef.current) {
       gameContainer.removeChildren();
@@ -261,7 +264,7 @@ const GameScreen: FC<GameScreenProps> = ({
       gameContainer.scale.set(DESIRED_GAME_SCALE);
 
       if (parsedData && parsedData.platforms.length > 0) {
-        console.log(`GameScreen: Building level ${levelId} with ${parsedData.platforms.length} platforms.`);
+        // console.log(`GameScreen: Building level ${levelId} with ${parsedData.platforms.length} platforms.`);
 
         parsedData.platforms.forEach((platformData: PlatformData) => {
           const pSprite = new PIXI.Graphics();
@@ -316,9 +319,9 @@ const GameScreen: FC<GameScreenProps> = ({
                 }
             });
             lastPlatformRef.current = rightmostPlatformCandidate;
-            if (lastPlatformRef.current) {
-                console.log(`GameScreen: Last platform for level ${levelId} identified: X=${lastPlatformRef.current.initialX}, W=${lastPlatformRef.current.width}, Type=${lastPlatformRef.current.type}`);
-            }
+            // if (lastPlatformRef.current) {
+            //     console.log(`GameScreen: Last platform for level ${levelId} identified: X=${lastPlatformRef.current.initialX}, W=${lastPlatformRef.current.width}, Type=${lastPlatformRef.current.type}`);
+            // }
         }
 
         if (!playerRef.current) {
@@ -377,14 +380,16 @@ const GameScreen: FC<GameScreenProps> = ({
     const app = pixiAppRef.current;
     const gameContainer = gameContainerRef.current;
 
-    if (!gameStarted || !player || !app || !gameContainer ) return;
+    if (!gameStarted || !player || !app || !gameContainer || isLoading || isPaused ) return;
+    
     if (!parsedData || parsedData.platforms.length === 0) {
         if (player.sprite) player.sprite.visible = false;
         return;
     }
     if (player.sprite) player.sprite.visible = true;
 
-    if (levelStartTimeRef.current && levelId > 0 && !isLoading && !isPaused) {
+    // Timer update logic
+    if (levelStartTimeRef.current && levelId > 0 ) { // Removed !isLoading and !isPaused as they are in the main guard
         const currentTime = (Date.now() - levelStartTimeRef.current) / 1000;
         setElapsedTime(currentTime);
     }
@@ -522,7 +527,7 @@ const GameScreen: FC<GameScreenProps> = ({
         const playerVRect = { x: player.x, y: player.y, width: player.width, height: player.height };
         if (checkCollision(playerVRect, pRect)) {
             if (player.vy > 0) {
-                if (prevPlayerY + player.height <= pRect.y + 1) {
+                if (prevPlayerY + player.height <= pRect.y + 1) { // +1 to allow landing on exact edge
                     player.y = pRect.y - player.height; player.vy = 0; player.isJumping = false; player.onGround = true;
                     player.standingOnPlatform = pObj;
                     if (pObj.type === 'breakable' && !pObj.isBroken && !pObj.isBreaking) {
@@ -530,7 +535,7 @@ const GameScreen: FC<GameScreenProps> = ({
                     }
                 }
             } else if (player.vy < 0) {
-                if (prevPlayerY >= pRect.y + pRect.height - 1) {
+                if (prevPlayerY >= pRect.y + pRect.height - 1) { // -1 to allow hitting head on exact edge
                     player.y = pRect.y + pRect.height; player.vy = 0;
                 }
             }
@@ -559,7 +564,7 @@ const GameScreen: FC<GameScreenProps> = ({
          gameWorldMaxY = Math.max(...parsedData.platforms.map(p => p.y + DEFAULT_PLATFORM_HEIGHT)) + 200;
     }
     if (player.y > gameWorldMaxY) {
-        console.log(`GameScreen: Player fell off map at level ${levelId}. Deaths: ${deathCount + 1}`);
+        // console.log(`GameScreen: Player fell off map at level ${levelId}. Deaths: ${deathCount + 1}`);
         if (deathSoundRef.current) { deathSoundRef.current.currentTime = 0; deathSoundRef.current.play().catch(e => console.warn("Death sound err:", e)); }
         setDeathCount(prev => prev + 1);
 
@@ -576,7 +581,7 @@ const GameScreen: FC<GameScreenProps> = ({
         !newLevelRequestedRef.current && onRequestNewLevel && !isLoading) {
       if (winSoundRef.current) { winSoundRef.current.currentTime = 0; winSoundRef.current.play().catch(e => console.warn("Win sound err:", e)); }
       newLevelRequestedRef.current = true;
-      console.log(`GameScreen: Calling onRequestNewLevel() for level ${levelId}.`);
+      // console.log(`GameScreen: Calling onRequestNewLevel() for level ${levelId}.`);
       if (onRequestNewLevel) onRequestNewLevel();
     }
 
@@ -590,11 +595,11 @@ const GameScreen: FC<GameScreenProps> = ({
         gameContainer.y += (targetY - gameContainer.y) * CAMERA_LERP_FACTOR;
     }
 
-  }, [parsedData, onRequestNewLevel, levelId, isLoading, deathCount, isPaused, elapsedTime, gameStarted]);
+  }, [parsedData, onRequestNewLevel, levelId, isLoading, deathCount, isPaused, gameStarted]); // Removed elapsedTime
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-        if (!gameStarted || isLoading || isPaused) return;
+        if (!gameStarted || isLoading || isPaused) return; // Ignore input if paused/loading
         keysPressedRef.current.add(event.code);
     }
     const handleKeyUp = (event: KeyboardEvent) => {
@@ -605,11 +610,11 @@ const GameScreen: FC<GameScreenProps> = ({
 
     const app = pixiAppRef.current;
     if (gameStarted && app && app.ticker) {
-      app.ticker.remove(gameLoop);
-      if (!isLoading && !isPaused) {
+      app.ticker.remove(gameLoop); // Always remove first to prevent duplicates if effect re-runs
+      if (!isLoading && !isPaused) { // Only add if game is active
         app.ticker.add(gameLoop);
       }
-    } else if (app && app.ticker) {
+    } else if (app && app.ticker) { // If game not started, ensure ticker is clear
         app.ticker.remove(gameLoop);
     }
 
@@ -620,11 +625,12 @@ const GameScreen: FC<GameScreenProps> = ({
         app.ticker.remove(gameLoop);
       }
     };
-  }, [gameLoop, parsedData, levelId, isLoading, isPaused, gameStarted]);
+  }, [gameLoop, isLoading, isPaused, gameStarted]); // Ensure all relevant states are dependencies
 
   const handleManualGenerateFromPauseMenu = async (formData: Pick<GenerateLevelInput, 'difficulty'>) => {
+    setIsPaused(false); // Close pause menu BEFORE starting generation
     await onManualGenerateRequested(formData);
-    setIsPaused(false); 
+    // isLoading will be true, game will be paused by main logic
   };
 
 
@@ -695,15 +701,15 @@ const GameScreen: FC<GameScreenProps> = ({
                     <DialogHeader>
                         <DialogTitle className="text-2xl text-primary uppercase tracking-wider text-center mb-4">Paused</DialogTitle>
                     </DialogHeader>
-                    <div className="grid gap-4 py-4"> {/* Reduced gap from gap-6 */}
-                        <div className="border p-3 rounded-md border-border bg-background/30"> {/* Reduced padding from p-4 */}
+                    <div className="grid gap-4 py-4">
+                        <div className="border p-3 rounded-md border-border bg-background/30">
                              <LevelGeneratorForm
                                 onGenerateRequested={handleManualGenerateFromPauseMenu}
                                 initialValues={defaultLevelParams}
-                                onFormSubmitted={() => setIsPaused(false)} 
+                                onFormSubmitted={() => { /* setIsPaused(false) is handled by handleManualGenerateFromPauseMenu */ }} 
                             />
                         </div>
-                        <div className="border p-3 rounded-md border-border bg-background/30"> {/* Reduced padding, removed max-h and overflow */}
+                        <div className="border p-3 rounded-md border-border bg-background/30">
                             <ControlsGuide />
                         </div>
                     </div>
@@ -730,16 +736,18 @@ const GameScreen: FC<GameScreenProps> = ({
           {isLoading && (
             <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center text-center text-foreground z-20 p-4 rounded-b-lg">
               <Loader2 className="w-12 h-12 animate-spin text-primary mb-4" />
-              { (levelId === 0 && gameStarted) ? (
+              { (levelId === 0 && gameStarted) ? ( // Message when first level is generating after pressing "Start Game" OR manual generation
                   <p className="text-lg">Loading Game... Generating Level 1...</p>
               ) : (
-                  gameStarted && levelId > 0 ? (
+                  gameStarted && levelId > 0 ? ( // Message when transitioning between subsequent levels
                       <>
                           <p className="text-2xl font-bold mb-2">Level {levelId} Complete!</p>
                           <p className="text-lg">Generating Level {levelId + 1}...</p>
                       </>
                   ) : (
-                      <p className="text-lg">Loading...</p> // Fallback, should ideally not be hit if gameStarted logic is sound
+                       // This case should ideally not be hit if logic is sound,
+                       // but acts as a fallback if isLoading is true without other conditions met.
+                      <p className="text-lg">Loading...</p>
                   )
               )}
             </div>
@@ -751,4 +759,3 @@ const GameScreen: FC<GameScreenProps> = ({
 };
 
 export default GameScreen;
-
