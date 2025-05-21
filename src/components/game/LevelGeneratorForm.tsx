@@ -1,6 +1,4 @@
 
-// @ts-nocheck
-// TODO: Fix TS errors
 "use client";
 
 import type { FC } from 'react';
@@ -25,23 +23,19 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-// Removed direct import of handleGenerateLevelAction
 import type { GenerateLevelInput } from '@/ai/flows/generate-level';
 import { Loader2 } from 'lucide-react';
-// Removed useToast as HomePage will handle toasts for manual generation
 
-// Simplified form schema, only difficulty
 const formSchema = z.object({
   difficulty: z.enum(['easy', 'medium', 'hard']),
 });
 
-// Values from this form will only contain difficulty
 type LevelGeneratorFormValues = z.infer<typeof formSchema>;
 
 interface LevelGeneratorFormProps {
-  onGenerateRequested: (formData: LevelGeneratorFormValues) => Promise<void>; // Changed prop name
+  onGenerateRequested: (formData: LevelGeneratorFormValues) => Promise<void>;
   initialValues?: Pick<GenerateLevelInput, 'difficulty'>; 
-  onFormSubmitted?: () => void;
+  onFormSubmitted?: () => void; // Called after onGenerateRequested completes
 }
 
 const LevelGeneratorForm: FC<LevelGeneratorFormProps> = ({ 
@@ -50,7 +44,6 @@ const LevelGeneratorForm: FC<LevelGeneratorFormProps> = ({
     onFormSubmitted 
 }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
-  // Removed toast from here
 
   const form = useForm<LevelGeneratorFormValues>({
     resolver: zodResolver(formSchema),
@@ -68,15 +61,13 @@ const LevelGeneratorForm: FC<LevelGeneratorFormProps> = ({
   const onSubmit: SubmitHandler<LevelGeneratorFormValues> = async (values) => {
     setIsSubmitting(true);
     try {
-      await onGenerateRequested(values); // Call the new prop
-      // Toasting and state updates (isLoadingLevel, generatedLevel, levelCount) are now handled by HomePage
+      await onGenerateRequested(values); 
       if (onFormSubmitted) {
-          onFormSubmitted();
+          onFormSubmitted(); // Call this after generation is initiated
       }
     } catch (error) {
-      // Error handling for the generation process itself should be in HomePage
-      // This form's error handling is now minimal, mostly for the submit process if needed
-      console.error("Error during onGenerateRequested call:", error);
+      console.error("Error during onGenerateRequested call from LevelGeneratorForm:", error);
+      // Potentially show a local error message if needed, but HomePage handles general errors
     } finally {
       setIsSubmitting(false);
     }
@@ -84,18 +75,18 @@ const LevelGeneratorForm: FC<LevelGeneratorFormProps> = ({
 
   return (
     <>
-      <CardHeader className="p-4 pt-0 pb-2">
-        <CardTitle className="text-accent uppercase text-lg tracking-wider">Level Generator</CardTitle>
+      <CardHeader className="p-0 pb-2">
+        <CardTitle className="text-accent uppercase text-base tracking-wider text-center">New Level</CardTitle>
       </CardHeader>
-      <CardContent className="p-4 pt-0">
+      <CardContent className="p-0">
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3">
             <FormField
               control={form.control}
               name="difficulty"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="text-foreground/80 text-xs">Difficulty</FormLabel>
+                  <FormLabel className="text-foreground/80 text-xs sr-only">Difficulty</FormLabel>
                   <Select onValueChange={field.onChange} defaultValue={field.value}>
                     <FormControl>
                       <SelectTrigger className="bg-input border-border focus:ring-ring h-9 text-xs">
@@ -131,5 +122,3 @@ const LevelGeneratorForm: FC<LevelGeneratorFormProps> = ({
 };
 
 export default LevelGeneratorForm;
-
-    

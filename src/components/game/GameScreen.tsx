@@ -8,8 +8,8 @@ import type { GenerateLevelOutput, GenerateLevelInput } from '@/ai/flows/generat
 import type { ParsedLevelData, Platform as PlatformData } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Loader2, SlidersHorizontal, Gamepad2, TimerIcon } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from '@/components/ui/dialog';
+import { Loader2, SlidersHorizontal, Gamepad2, TimerIcon, PauseIcon, PlayIcon } from 'lucide-react';
 import LevelGeneratorForm from '@/components/game/LevelGeneratorForm';
 import ControlsGuide from '@/components/game/ControlsGuide';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -35,7 +35,7 @@ const parseLevelData = (levelDataString: string | undefined): ParsedLevelData | 
     if (!trimmedData) return null; // Handle case where trim results in empty string
     const data = JSON.parse(trimmedData);
     if (!data.platforms || !Array.isArray(data.platforms)) data.platforms = [];
-    data.obstacles = [];
+    data.obstacles = []; // Obstacles are not rendered as per previous request
     return data as ParsedLevelData;
   } catch (error) {
     console.error("Failed to parse level data for GameScreen:", error, "Data string:", levelDataString);
@@ -51,20 +51,20 @@ const JUMP_FORCE = 7;
 const GRAVITY = 0.3;
 const DEFAULT_PLATFORM_HEIGHT = 10;
 
-const PLATFORM_COLOR_STANDARD = 0x9400D3;
-const PLATFORM_COLOR_MOBILE = 0x0077FF;
-const PLATFORM_COLOR_VERTICAL_MOBILE = 0x00D377;
-const PLATFORM_COLOR_TIMED = 0xFF8C00;
-const PLATFORM_COLOR_BREAKABLE = 0x8B4513;
+const PLATFORM_COLOR_STANDARD = 0x9400D3; // Vibrant Purple
+const PLATFORM_COLOR_MOBILE = 0x0077FF; // Blue
+const PLATFORM_COLOR_VERTICAL_MOBILE = 0x00D377; // Greenish-blue
+const PLATFORM_COLOR_TIMED = 0xFF8C00; // Orange
+const PLATFORM_COLOR_BREAKABLE = 0x8B4513; // Brown
 
-const PLAYER_COLOR = 0xFFDE00;
+const PLAYER_COLOR = 0xFFDE00; // Yellow
 
 const DEFAULT_PLATFORM_MOVE_SPEED = 0.5;
 const DEFAULT_PLATFORM_MOVE_RANGE = 50;
-const TIMED_PLATFORM_VISIBLE_DURATION = 3 * 60;
-const TIMED_PLATFORM_HIDDEN_DURATION = 2 * 60;
-const BREAKABLE_PLATFORM_BREAK_DELAY = 0.5 * 60;
-const BREAKABLE_PLATFORM_RESPAWN_DURATION = 5 * 60;
+const TIMED_PLATFORM_VISIBLE_DURATION = 3 * 60; // 3 seconds at 60fps
+const TIMED_PLATFORM_HIDDEN_DURATION = 2 * 60;  // 2 seconds at 60fps
+const BREAKABLE_PLATFORM_BREAK_DELAY = 0.5 * 60; // 0.5 seconds at 60fps
+const BREAKABLE_PLATFORM_RESPAWN_DURATION = 5 * 60; // 5 seconds at 60fps
 
 const CAMERA_LERP_FACTOR = 0.1;
 const DESIRED_GAME_SCALE = 2.5;
@@ -123,12 +123,10 @@ const GameScreen: FC<GameScreenProps> = ({
   const pixiAppRef = useRef<PIXI.Application | null>(null);
   const gameContainerRef = useRef<PIXI.Container | null>(null);
   const [deathCount, setDeathCount] = useState<number>(0);
-  const [isFormPopoverOpen, setIsFormPopoverOpen] = useState<boolean>(false);
-  const [isControlsPopoverOpen, setIsControlsPopoverOpen] = useState<boolean>(false);
+  const [isPaused, setIsPaused] = useState<boolean>(false);
   const [elapsedTime, setElapsedTime] = useState<number>(0);
   const levelStartTimeRef = useRef<number | null>(null);
   const [startScreenDifficulty, setStartScreenDifficulty] = useState<GenerateLevelInput['difficulty']>(defaultLevelParams.difficulty || 'medium');
-
 
   const jumpSoundRef = useRef<HTMLAudioElement | null>(null);
   const deathSoundRef = useRef<HTMLAudioElement | null>(null);
@@ -242,13 +240,11 @@ const GameScreen: FC<GameScreenProps> = ({
 
 
     return () => {
-      // Only destroy if gameStarted is false in the next render, or on full component unmount
-      // This check is now primarily in the main effect body
       if (jumpSoundRef.current) jumpSoundRef.current.pause(); jumpSoundRef.current = null;
       if (deathSoundRef.current) deathSoundRef.current.pause(); deathSoundRef.current = null;
       if (winSoundRef.current) winSoundRef.current.pause(); winSoundRef.current = null;
     };
-  }, [gameStarted, levelId]); // Added levelId here to re-initialize audio if game restarts
+  }, [gameStarted, levelId]);
 
   useEffect(() => {
     if (!gameStarted) return;
@@ -388,7 +384,7 @@ const GameScreen: FC<GameScreenProps> = ({
     }
     if (player.sprite) player.sprite.visible = true;
 
-    if (levelStartTimeRef.current && levelId > 0 && !isLoading && !isFormPopoverOpen && !isControlsPopoverOpen) {
+    if (levelStartTimeRef.current && levelId > 0 && !isLoading && !isPaused) {
         const currentTime = (Date.now() - levelStartTimeRef.current) / 1000;
         setElapsedTime(currentTime);
     }
@@ -594,11 +590,11 @@ const GameScreen: FC<GameScreenProps> = ({
         gameContainer.y += (targetY - gameContainer.y) * CAMERA_LERP_FACTOR;
     }
 
-  }, [parsedData, onRequestNewLevel, levelId, isLoading, deathCount, isFormPopoverOpen, isControlsPopoverOpen, elapsedTime, gameStarted]);
+  }, [parsedData, onRequestNewLevel, levelId, isLoading, deathCount, isPaused, elapsedTime, gameStarted]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-        if (!gameStarted || isLoading || isFormPopoverOpen || isControlsPopoverOpen) return;
+        if (!gameStarted || isLoading || isPaused) return;
         keysPressedRef.current.add(event.code);
     }
     const handleKeyUp = (event: KeyboardEvent) => {
@@ -610,7 +606,7 @@ const GameScreen: FC<GameScreenProps> = ({
     const app = pixiAppRef.current;
     if (gameStarted && app && app.ticker) {
       app.ticker.remove(gameLoop);
-      if (!isLoading && !isFormPopoverOpen && !isControlsPopoverOpen) {
+      if (!isLoading && !isPaused) {
         app.ticker.add(gameLoop);
       }
     } else if (app && app.ticker) {
@@ -624,12 +620,13 @@ const GameScreen: FC<GameScreenProps> = ({
         app.ticker.remove(gameLoop);
       }
     };
-  }, [gameLoop, parsedData, levelId, isLoading, isFormPopoverOpen, isControlsPopoverOpen, gameStarted]);
+  }, [gameLoop, parsedData, levelId, isLoading, isPaused, gameStarted]);
 
-  const handlePopoverFormSubmit = async (formData: Pick<GenerateLevelInput, 'difficulty'>) => {
+  const handleManualGenerateFromPauseMenu = async (formData: Pick<GenerateLevelInput, 'difficulty'>) => {
     await onManualGenerateRequested(formData);
-    setIsFormPopoverOpen(false);
+    setIsPaused(false); // Close the pause menu after initiating generation
   };
+
 
   if (!gameStarted) {
     return (
@@ -674,77 +671,83 @@ const GameScreen: FC<GameScreenProps> = ({
 
 
   return (
-    <Card className="border-primary shadow-lg bg-card/80 backdrop-blur-sm flex-grow flex flex-col">
-      <CardHeader className="flex flex-row items-center justify-between p-4">
-        <CardTitle className="text-primary uppercase text-sm md:text-base tracking-wider flex items-center gap-x-2 md:gap-x-3">
-          <span>Level {levelId > 0 ? levelId : '...'}</span>
-          <span className="text-foreground/70">|</span>
-          <span>Deaths: {deathCount}</span>
-          <span className="text-foreground/70">|</span>
-          <span className="flex items-center">
-            <TimerIcon className="w-4 h-4 mr-1 text-foreground/70" /> {formatTime(elapsedTime)}
-          </span>
-        </CardTitle>
-        <div className="flex items-center gap-1">
-            <Popover open={isControlsPopoverOpen} onOpenChange={setIsControlsPopoverOpen}>
-                <PopoverTrigger asChild>
-                    <Button variant="ghost" size="icon" className="text-primary hover:text-primary/80">
-                        <Gamepad2 className="h-5 w-5" />
-                        <span className="sr-only">Controls Guide</span>
+    <>
+      <Card className="border-primary shadow-lg bg-card/80 backdrop-blur-sm flex-grow flex flex-col">
+        <CardHeader className="flex flex-row items-center justify-between p-4">
+          <CardTitle className="text-primary uppercase text-sm md:text-base tracking-wider flex items-center gap-x-2 md:gap-x-3">
+            <span>Level {levelId > 0 ? levelId : '...'}</span>
+            <span className="text-foreground/70">|</span>
+            <span>Deaths: {deathCount}</span>
+            <span className="text-foreground/70">|</span>
+            <span className="flex items-center">
+              <TimerIcon className="w-4 h-4 mr-1 text-foreground/70" /> {formatTime(elapsedTime)}
+            </span>
+          </CardTitle>
+          <div className="flex items-center gap-1">
+            <Dialog open={isPaused} onOpenChange={setIsPaused}>
+                <DialogTrigger asChild>
+                    <Button variant="ghost" size="icon" className="text-primary hover:text-primary/80" onClick={() => setIsPaused(true)}>
+                        <PauseIcon className="h-6 w-6" />
+                        <span className="sr-only">Pause Game</span>
                     </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-80 z-50 bg-card border-accent shadow-lg p-0">
-                    <ControlsGuide />
-                </PopoverContent>
-            </Popover>
-
-            <Popover open={isFormPopoverOpen} onOpenChange={setIsFormPopoverOpen}>
-            <PopoverTrigger asChild>
-                <Button variant="ghost" size="icon" className="text-primary hover:text-primary/80">
-                <SlidersHorizontal className="h-5 w-5" />
-                <span className="sr-only">Level Generator</span>
-                </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-80 z-50 bg-card border-accent shadow-lg p-0">
-                <div className="p-4">
-                    <LevelGeneratorForm
-                        onGenerateRequested={handlePopoverFormSubmit}
-                        initialValues={defaultLevelParams}
-                        onFormSubmitted={() => setIsFormPopoverOpen(false)}
-                    />
-                </div>
-            </PopoverContent>
-            </Popover>
-        </div>
-      </CardHeader>
-      <CardContent className="flex-grow p-0 m-0 relative overflow-hidden rounded-b-lg">
-        <div
-          ref={pixiContainerRef}
-          className="w-full h-full bg-black/50" 
-          aria-label="Game canvas"
-          data-ai-hint="gameplay screenshot"
-        />
-        {isLoading && (
-          <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center text-center text-foreground z-20 p-4 rounded-b-lg">
-            <Loader2 className="w-12 h-12 animate-spin text-primary mb-4" />
-            { (levelId === 0 && gameStarted) ? (
-                <p className="text-lg">Loading Game... Generating Level 1...</p>
-             ) : (
-                gameStarted && levelId > 0 ? (
-                    <>
-                        <p className="text-2xl font-bold mb-2">Level {levelId} Complete!</p>
-                        <p className="text-lg">Generating Level {levelId + 1}...</p>
-                    </>
-                ) : (
-                     <p className="text-lg">Loading...</p>
-                )
-             )}
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-[480px] bg-card border-primary text-foreground">
+                    <DialogHeader>
+                        <DialogTitle className="text-2xl text-primary uppercase tracking-wider text-center mb-4">Paused</DialogTitle>
+                    </DialogHeader>
+                    <div className="grid gap-6 py-4">
+                        <div className="border p-4 rounded-md border-border bg-background/30">
+                             <LevelGeneratorForm
+                                onGenerateRequested={handleManualGenerateFromPauseMenu}
+                                initialValues={defaultLevelParams}
+                                onFormSubmitted={() => setIsPaused(false)} // This will be called by the form
+                            />
+                        </div>
+                        <div className="border p-4 rounded-md border-border bg-background/30 max-h-[200px] overflow-y-auto">
+                            <ControlsGuide />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button 
+                            onClick={() => setIsPaused(false)} 
+                            className="w-full bg-accent hover:bg-accent/90 text-accent-foreground uppercase tracking-wider text-lg py-3 h-12"
+                            size="lg"
+                        >
+                            <PlayIcon className="mr-2 h-5 w-5" /> Resume Game
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
           </div>
-        )}
-      </CardContent>
-    </Card>
+        </CardHeader>
+        <CardContent className="flex-grow p-0 m-0 relative overflow-hidden rounded-b-lg">
+          <div
+            ref={pixiContainerRef}
+            className="w-full h-full bg-black/50" 
+            aria-label="Game canvas"
+            data-ai-hint="gameplay screenshot"
+          />
+          {isLoading && (
+            <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center text-center text-foreground z-20 p-4 rounded-b-lg">
+              <Loader2 className="w-12 h-12 animate-spin text-primary mb-4" />
+              { (levelId === 0 && gameStarted) ? (
+                  <p className="text-lg">Loading Game... Generating Level 1...</p>
+              ) : (
+                  gameStarted && levelId > 0 ? (
+                      <>
+                          <p className="text-2xl font-bold mb-2">Level {levelId} Complete!</p>
+                          <p className="text-lg">Generating Level {levelId + 1}...</p>
+                      </>
+                  ) : (
+                      <p className="text-lg">Loading...</p>
+                  )
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </>
   );
 };
 
 export default GameScreen;
-    
