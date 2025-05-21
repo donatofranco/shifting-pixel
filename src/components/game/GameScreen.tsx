@@ -20,7 +20,7 @@ const parseLevelData = (levelDataString: string | undefined): ParsedLevelData | 
   try {
     const data = JSON.parse(levelDataString);
     if (!data.platforms || !Array.isArray(data.platforms)) data.platforms = [];
-    // Obstacles are explicitly not rendered based on user request.
+    // Obstacles are explicitly not rendered.
     data.obstacles = [];
     return data as ParsedLevelData;
   } catch (error) {
@@ -31,7 +31,7 @@ const parseLevelData = (levelDataString: string | undefined): ParsedLevelData | 
 
 const PLAYER_WIDTH = 8;
 const PLAYER_HEIGHT = 16;
-const PLAYER_CROUCH_HEIGHT = 8; // Half of PLAYER_HEIGHT
+const PLAYER_CROUCH_HEIGHT = 8;
 const PLAYER_SPEED = 2;
 const JUMP_FORCE = 7;
 const GRAVITY = 0.3;
@@ -46,14 +46,14 @@ const PLAYER_COLOR = 0xFFDE00;
 
 const MOBILE_PLATFORM_SPEED = 0.5;
 const MOBILE_PLATFORM_RANGE = 50;
-const TIMED_PLATFORM_VISIBLE_DURATION = 3 * 60; // 3 seconds at 60fps
-const TIMED_PLATFORM_HIDDEN_DURATION = 2 * 60;  // 2 seconds at 60fps
-const BREAKABLE_PLATFORM_BREAK_DELAY = 0.5 * 60; // 0.5 seconds at 60fps
-const BREAKABLE_PLATFORM_RESPAWN_DURATION = 5 * 60; // 5 seconds at 60fps
+const TIMED_PLATFORM_VISIBLE_DURATION = 3 * 60; 
+const TIMED_PLATFORM_HIDDEN_DURATION = 2 * 60;  
+const BREAKABLE_PLATFORM_BREAK_DELAY = 0.5 * 60; 
+const BREAKABLE_PLATFORM_RESPAWN_DURATION = 5 * 60;
 
 const CAMERA_LERP_FACTOR = 0.1;
 const DESIRED_GAME_SCALE = 2.5;
-const CROUCH_CAMERA_VIEW_ADJUST_WORLD = 20; // How many world units lower the camera aims when crouching
+const CROUCH_CAMERA_VIEW_ADJUST_WORLD = 20; 
 
 function checkCollision(rect1: {x: number, y: number, width: number, height: number},
                         rect2: {x: number, y: number, width: number, height: number}): boolean {
@@ -89,6 +89,8 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
   const pixiAppRef = useRef<PIXI.Application | null>(null);
   const gameContainerRef = useRef<PIXI.Container | null>(null);
   const [isTransitioningLevel, setIsTransitioningLevel] = useState(false);
+  const jumpSoundRef = useRef<HTMLAudioElement | null>(null);
+
 
   const playerRef = useRef<{
     sprite: PIXI.Graphics;
@@ -124,7 +126,7 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
     console.log(`GameScreen: useEffect for levelId. Current levelId: ${levelId}, prevLevelIdRef: ${prevLevelIdRef.current}`);
     if (levelId !== undefined && levelId > 0 && prevLevelIdRef.current !== levelId && prevLevelIdRef.current !== undefined) {
       newLevelRequestedRef.current = false;
-      setIsTransitioningLevel(false); // New level loaded, hide transition message
+      setIsTransitioningLevel(false); 
       console.log(`GameScreen: New level detected (ID: ${levelId} from prev ${prevLevelIdRef.current}). newLevelRequestedRef and isTransitioningLevel reset.`);
     }
     prevLevelIdRef.current = levelId;
@@ -157,6 +159,12 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
         app.stage.addChild(gameContainer);
         gameContainerRef.current = gameContainer;
 
+        // Initialize jump sound - REMEMBER TO ADD YOUR SOUND FILE TO public/sounds/
+        jumpSoundRef.current = new Audio('/sounds/jump.wav'); 
+        // You might want to call .load() but modern browsers often do this automatically
+        // jumpSoundRef.current.load(); 
+
+
       })();
     }
 
@@ -168,6 +176,10 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
         playerRef.current = null;
         platformObjectsRef.current = [];
         lastPlatformRef.current = null;
+      }
+      if (jumpSoundRef.current) {
+        jumpSoundRef.current.pause();
+        jumpSoundRef.current = null;
       }
     };
   }, []);
@@ -293,7 +305,6 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
             playerRef.current.vy = 0;
             playerRef.current.onGround = false;
             playerRef.current.isJumping = false;
-            // Ensure player is not stuck crouching from previous level
             playerRef.current.height = PLAYER_HEIGHT; 
             playerRef.current.isCrouching = false;
             playerRef.current.standingOnPlatform = null;
@@ -304,7 +315,6 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
         
         if (playerRef.current && app && gameContainer) {
             const scale = gameContainer.scale.x;
-            // Initial camera focus based on player's standing height
             let playerFocusY = playerRef.current.y + PLAYER_HEIGHT / 2; 
             gameContainer.x = app.screen.width / 2 - (playerRef.current.x + playerRef.current.width / 2) * scale;
             gameContainer.y = app.screen.height / 2 - playerFocusY * scale;
@@ -425,7 +435,6 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
             player.y += heightDifference; 
             player.height = PLAYER_CROUCH_HEIGHT;
         } else if (!player.isCrouching && wasCrouching) { 
-             // Check for ceiling collision before uncrouching
             const uncrouchCheckRect = { x: player.x, y: player.y - heightDifference, width: player.width, height: PLAYER_HEIGHT };
             let canUncrouch = true;
             for (const pObj of platformObjectsRef.current) {
@@ -440,7 +449,7 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
                 player.y -= heightDifference; 
                 player.height = PLAYER_HEIGHT;
             } else {
-                 player.isCrouching = true; // Force stay crouching
+                 player.isCrouching = true; 
             }
         }
     }
@@ -456,6 +465,10 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
       player.isJumping = true;
       player.onGround = false;
       player.standingOnPlatform = null;
+      if (jumpSoundRef.current) {
+        jumpSoundRef.current.currentTime = 0; // Rewind to start
+        jumpSoundRef.current.play().catch(error => console.warn("Jump sound play failed:", error));
+      }
     }
 
     if (!player.onGround) {
@@ -585,14 +598,12 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
       onRequestNewLevel();
     }
 
-    // Camera follow logic
     if (app && gameContainer) {
         const scale = gameContainer.scale.x;
         let playerVisualCenterY = player.y + player.height / 2;
         let playerFocusY = playerVisualCenterY;
 
         if (player.isCrouching) {
-            // When crouching, adjust the focus point slightly lower in world coordinates (higher Y value)
             playerFocusY = playerVisualCenterY + CROUCH_CAMERA_VIEW_ADJUST_WORLD;
         }
 
@@ -603,7 +614,7 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
         gameContainer.y += (targetY - gameContainer.y) * CAMERA_LERP_FACTOR;
     }
 
-  }, [parsedData, onRequestNewLevel, levelId, isTransitioningLevel]); // Added isTransitioningLevel
+  }, [parsedData, onRequestNewLevel, levelId, isTransitioningLevel]); 
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => keysPressedRef.current.add(event.code);
@@ -615,7 +626,7 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
     const app = pixiAppRef.current;
     if (app && app.ticker) {
       app.ticker.remove(gameLoop); 
-      if (!isTransitioningLevel) { // Only add gameLoop if not transitioning
+      if (!isTransitioningLevel) { 
         app.ticker.add(gameLoop);
         console.log(`GameScreen: gameLoop added to ticker for levelId ${levelId}.`);
       } else {
@@ -630,7 +641,7 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
         app.ticker.remove(gameLoop);
       }
     };
-  }, [gameLoop, parsedData, levelId, isTransitioningLevel]); // Added isTransitioningLevel
+  }, [gameLoop, parsedData, levelId, isTransitioningLevel]); 
 
 
   return (
@@ -665,4 +676,5 @@ export default GameScreen;
     
 
     
+
 
