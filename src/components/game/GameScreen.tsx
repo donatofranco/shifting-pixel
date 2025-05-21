@@ -168,22 +168,18 @@ const GameScreen: FC<GameScreenProps> = ({
     if (!gameStarted) return; 
     console.log(`GameScreen: useEffect for levelId. Current levelId: ${levelId}, prevLevelIdRef: ${prevLevelIdRef.current}`);
     
-    // This effect runs when levelId changes, indicating a new level is starting (or game is starting).
-    // Reset newLevelRequestedRef to allow the next level completion to trigger.
-    // Only reset if it's not the very first load (where prevLevelIdRef would be undefined).
-    // And only if levelId is now > 0 (meaning a level is actually loaded).
     if (levelId > 0 && prevLevelIdRef.current !== undefined && prevLevelIdRef.current !== levelId) {
         newLevelRequestedRef.current = false;
         console.log(`GameScreen: New level detected (ID: ${levelId} from prev ${prevLevelIdRef.current}). newLevelRequestedRef reset.`);
     }
 
-    if (levelId > 0) { // For any actual loaded level (initial or subsequent)
+    if (levelId > 0) { 
         setElapsedTime(0);
         levelStartTimeRef.current = Date.now();
         console.log(`GameScreen: Timer reset and started for Level ${levelId}.`);
-    } else if (levelId === 0 && gameStarted) { // Game started, but initial level (level 1) is still loading
-        setElapsedTime(0); // Ensure timer is 0
-        levelStartTimeRef.current = null; // Don't start timer until level 1 actually loads
+    } else if (levelId === 0 && gameStarted) { 
+        setElapsedTime(0); 
+        levelStartTimeRef.current = null; 
         console.log(`GameScreen: Game starting, Level 1 loading. Timer reset, not started.`);
     }
 
@@ -191,8 +187,8 @@ const GameScreen: FC<GameScreenProps> = ({
   }, [levelId, gameStarted]);
 
   useEffect(() => {
-    if (!gameStarted || !pixiContainerRef.current || pixiAppRef.current) {
-      if (!gameStarted && pixiAppRef.current) { 
+    if (!gameStarted) { 
+      if (pixiAppRef.current) {
         pixiAppRef.current.destroy(true, { children: true, texture: true, baseTexture: true });
         pixiAppRef.current = null;
         gameContainerRef.current = null;
@@ -203,6 +199,9 @@ const GameScreen: FC<GameScreenProps> = ({
       }
       return;
     }
+
+    if (pixiAppRef.current) return; // Already initialized for this game session
+
 
     if (PIXI.TextureSource && PIXI.SCALE_MODES) {
         PIXI.TextureSource.defaultOptions.scaleMode = PIXI.SCALE_MODES.NEAREST;
@@ -234,30 +233,22 @@ const GameScreen: FC<GameScreenProps> = ({
       deathSoundRef.current = new Audio('/sounds/death.wav');
       winSoundRef.current = new Audio('/sounds/win.wav');
 
-      // Timer for level 1 will start when levelId prop becomes 1 (after generation)
-      if (levelId === 0 && gameStarted) { // Initial level is about to be loaded
+      if (levelId === 0 && gameStarted) { 
         levelStartTimeRef.current = null; 
       } else if (levelId > 0) {
-        levelStartTimeRef.current = Date.now(); // For subsequent levels or if already on level 1+
+        levelStartTimeRef.current = Date.now(); 
       }
     })();
     
 
     return () => {
-      if (pixiAppRef.current) {
-        pixiAppRef.current.destroy(true, { children: true, texture: true, baseTexture: true });
-        pixiAppRef.current = null;
-        gameContainerRef.current = null;
-        playerRef.current = null;
-        platformObjectsRef.current = [];
-        lastPlatformRef.current = null;
-        console.log("GameScreen: PixiJS app destroyed on cleanup.");
-      }
+      // Only destroy if gameStarted is false in the next render, or on full component unmount
+      // This check is now primarily in the main effect body
       if (jumpSoundRef.current) jumpSoundRef.current.pause(); jumpSoundRef.current = null;
       if (deathSoundRef.current) deathSoundRef.current.pause(); deathSoundRef.current = null;
       if (winSoundRef.current) winSoundRef.current.pause(); winSoundRef.current = null;
     };
-  }, [gameStarted]); 
+  }, [gameStarted]); // This effect now only runs when gameStarted changes
 
   useEffect(() => {
     if (!gameStarted) return; 
@@ -729,7 +720,7 @@ const GameScreen: FC<GameScreenProps> = ({
       <CardContent className="flex-grow p-0 m-0 relative overflow-hidden">
         <div
           ref={pixiContainerRef}
-          className="w-full h-full bg-black/50 rounded-b-lg"
+          className="w-full h-full bg-black/50 rounded-b-lg" // Ensure canvas container fills CardContent
           aria-label="Game canvas"
           data-ai-hint="gameplay screenshot"
         />
@@ -745,7 +736,7 @@ const GameScreen: FC<GameScreenProps> = ({
                         <p className="text-lg">Generating Level {levelId + 1}...</p>
                     </>
                 ) : (
-                     <p className="text-lg">Loading...</p> // Fallback, should ideally not be hit with current logic
+                     <p className="text-lg">Loading...</p> 
                 )
              )}
           </div>
@@ -756,5 +747,3 @@ const GameScreen: FC<GameScreenProps> = ({
 };
 
 export default GameScreen;
-
-    
