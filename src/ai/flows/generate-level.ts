@@ -19,7 +19,7 @@ import {z} from 'genkit';
 // Define the input schema for the level generation flow
 const GenerateLevelInputSchema = z.object({
   difficulty: z.enum(['easy', 'medium', 'hard']).describe('The difficulty level of the game.'),
-  levelLength: z.number().int().min(10).max(200).describe('The desired length of the level (number of platforms).'), // Min adjusted for shorter testable levels
+  levelLength: z.number().int().min(10).max(200).describe('The desired length of the level (number of platforms).'),
   platformDensity: z.enum(['sparse', 'normal', 'dense']).describe('The density of platforms in the level.'),
   obstacleDensity: z.enum(['low', 'medium', 'high']).describe('The density of obstacles in the level (currently not rendered but can be used for future features).'),
 });
@@ -59,8 +59,9 @@ const generateLevelPrompt = ai.definePrompt({
       *   **Starting Platform**: The first platform MUST be of type "standard" and placed at a reasonable starting height (e.g., y: 100-150 from the top, assuming y increases downwards) and position (e.g. x:0).
       *   **Ending Platform**: The final platform in the sequence (rightmost) MUST also be of type "standard" and be safely reachable.
   3.  **Platform Types - Creative Combinations**:
-      *   Incorporate a variety of platform types: 'standard', 'mobile', 'timed', 'breakable'.
+      *   Incorporate a variety of platform types: 'standard', 'mobile' (moves horizontally), 'vertical_mobile' (moves vertically), 'timed', 'breakable'.
       *   Distribute these types thoughtfully AND with an element of surprise to create interesting, varied, and sometimes unexpected challenges. Avoid long sequences of the same platform type unless it serves a specific, compelling design purpose. Consider how different platform types can interact with each other or require different player skills.
+      *   For 'mobile' and 'vertical_mobile' platforms, the game will assign a default movement range and speed. You only need to specify the type.
   4.  **Obstacles (Optional, consider placement if generated)**:
       *   If you include obstacles like 'spikes' or 'enemy', they should have 'width' and 'height' properties.
       *   Place obstacles thoughtfully. They should increase difficulty but not make the level unsolvable or overly frustrating. Avoid placing obstacles directly on critical jump paths without alternatives. Consider placing them in less obvious spots if the obstacle density allows for it.
@@ -77,6 +78,7 @@ const generateLevelPrompt = ai.definePrompt({
     "platforms": [
       {"x": 0, "y": 120, "width": 60, "type": "standard"},
       {"x": 80, "y": 100, "width": 40, "type": "mobile"},
+      {"x": 50, "y": 150, "width": 40, "type": "vertical_mobile"},
       {"x": 150, "y": 180, "width": 50, "type": "timed"},
       {"x": 220, "y": 150, "width": 70, "type": "breakable"},
       {"x": 300, "y": 130, "width": 50, "type": "standard"}
