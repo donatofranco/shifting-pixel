@@ -2,16 +2,17 @@
 "use client";
 
 import type { FC } from 'react';
-import { useEffect, useRef, useMemo, useCallback } from 'react';
+import { useEffect, useRef, useMemo, useCallback, useState } from 'react';
 import * as PIXI from 'pixi.js';
 import type { GenerateLevelOutput } from '@/ai/flows/generate-level';
 import type { ParsedLevelData, Platform as PlatformData } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Loader2 } from 'lucide-react'; // Import loader icon
 
 interface GameScreenProps {
   levelOutput: GenerateLevelOutput | null;
   onRequestNewLevel?: () => void;
-  levelId?: number; // Identifica el nivel actual (e.g., 1, 2, 3...)
+  levelId?: number;
 }
 
 const parseLevelData = (levelDataString: string | undefined): ParsedLevelData | null => {
@@ -27,7 +28,6 @@ const parseLevelData = (levelDataString: string | undefined): ParsedLevelData | 
   }
 };
 
-// Game constants
 const PLAYER_WIDTH = 8;
 const PLAYER_HEIGHT = 16;
 const PLAYER_CROUCH_HEIGHT = 8;
@@ -36,7 +36,6 @@ const JUMP_FORCE = 7;
 const GRAVITY = 0.3;
 const DEFAULT_PLATFORM_HEIGHT = 10;
 
-// Platform Colors
 const PLATFORM_COLOR_STANDARD = 0x9400D3;
 const PLATFORM_COLOR_MOBILE = 0x0077FF;
 const PLATFORM_COLOR_TIMED = 0xFF8C00;
@@ -44,13 +43,12 @@ const PLATFORM_COLOR_BREAKABLE = 0x8B4513;
 
 const PLAYER_COLOR = 0xFFDE00;
 
-// Platform behavior constants
 const MOBILE_PLATFORM_SPEED = 0.5;
 const MOBILE_PLATFORM_RANGE = 50;
-const TIMED_PLATFORM_VISIBLE_DURATION = 3 * 60; // 3 seconds at 60 FPS
-const TIMED_PLATFORM_HIDDEN_DURATION = 2 * 60;  // 2 seconds at 60 FPS
-const BREAKABLE_PLATFORM_BREAK_DELAY = 0.5 * 60; // 0.5 seconds at 60 FPS
-const BREAKABLE_PLATFORM_RESPAWN_DURATION = 5 * 60; // 5 seconds at 60 FPS
+const TIMED_PLATFORM_VISIBLE_DURATION = 3 * 60;
+const TIMED_PLATFORM_HIDDEN_DURATION = 2 * 60;
+const BREAKABLE_PLATFORM_BREAK_DELAY = 0.5 * 60;
+const BREAKABLE_PLATFORM_RESPAWN_DURATION = 5 * 60;
 
 function checkCollision(rect1: {x: number, y: number, width: number, height: number},
                         rect2: {x: number, y: number, width: number, height: number}): boolean {
@@ -85,6 +83,7 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
   const pixiContainerRef = useRef<HTMLDivElement>(null);
   const pixiAppRef = useRef<PIXI.Application | null>(null);
   const gameContainerRef = useRef<PIXI.Container | null>(null);
+  const [isTransitioningLevel, setIsTransitioningLevel] = useState(false);
 
   const playerRef = useRef<{
     sprite: PIXI.Graphics;
@@ -102,8 +101,7 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
 
   const platformObjectsRef = useRef<PlatformObject[]>([]);
   const keysPressedRef = useRef<Set<string>>(new Set());
-  const levelEndXRef = useRef<number>(0); // Still useful for general world boundary
-  const lastPlatformRef = useRef<PlatformObject | null>(null); // Reference to the actual last platform object
+  const lastPlatformRef = useRef<PlatformObject | null>(null);
   const newLevelRequestedRef = useRef<boolean>(false);
   const prevLevelIdRef = useRef<number | undefined>();
 
@@ -121,7 +119,8 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
     console.log(`GameScreen: useEffect for levelId. Current levelId: ${levelId}, prevLevelIdRef: ${prevLevelIdRef.current}`);
     if (levelId !== undefined && levelId > 0 && prevLevelIdRef.current !== levelId) {
       newLevelRequestedRef.current = false;
-      console.log(`GameScreen: New level detected (ID: ${levelId} from prev ${prevLevelIdRef.current}). newLevelRequestedRef reset to false.`);
+      setIsTransitioningLevel(false); // New level loaded, hide transition message
+      console.log(`GameScreen: New level detected (ID: ${levelId} from prev ${prevLevelIdRef.current}). newLevelRequestedRef and isTransitioningLevel reset.`);
     }
     prevLevelIdRef.current = levelId;
   }, [levelId]);
@@ -175,7 +174,7 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
     if (app && gameContainer && pixiContainerRef.current) {
       gameContainer.removeChildren();
       platformObjectsRef.current = [];
-      lastPlatformRef.current = null; // Reset last platform for the new level
+      lastPlatformRef.current = null;
 
       if (parsedData && parsedData.platforms.length > 0) {
         console.log(`GameScreen: Building level ${levelId} with ${parsedData.platforms.length} platforms.`);
@@ -187,11 +186,10 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
             worldMaxX = Math.max(...parsedData.platforms.map(e => e.x + (e.width || 0)));
             worldMinY = Math.min(...parsedData.platforms.map(e => e.y));
             worldMaxY = Math.max(...parsedData.platforms.map(e => e.y + DEFAULT_PLATFORM_HEIGHT));
-        } else { // Fallback if no platforms, though this case means parsedData.platforms.length is 0
+        } else { 
             worldMinX = 0; worldMaxX = 300; worldMinY = 0; worldMaxY = 150;
         }
-        levelEndXRef.current = worldMaxX; // This still represents the furthest X point of any platform
-        console.log(`GameScreen: Level ${levelId} bounds calculated. MinX: ${worldMinX}, MaxX: ${worldMaxX} (levelEndXRef: ${levelEndXRef.current})`);
+        console.log(`GameScreen: Level ${levelId} bounds calculated. MinX: ${worldMinX}, MaxX: ${worldMaxX}`);
 
 
         const worldWidth = Math.max(1, worldMaxX - worldMinX);
@@ -265,7 +263,6 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
           platformObjectsRef.current.push(platformObj);
         });
 
-        // Identify the last platform
         if (platformObjectsRef.current.length > 0) {
             let rightmostPlatformCandidate: PlatformObject | null = null;
             let maxRightEdgeCoord = -Infinity;
@@ -337,8 +334,6 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
         console.log(`GameScreen: No parsed data or no platforms for level ${levelId}. Clearing platforms and hiding player if exists.`);
         platformObjectsRef.current = [];
         lastPlatformRef.current = null;
-        levelEndXRef.current = 0;
-        console.log(`GameScreen: levelEndXRef set to 0 for level ${levelId}`);
       }
     }
   }, [parsedData, pixiAppRef.current?.renderer?.width, pixiAppRef.current?.renderer?.height, levelId]); 
@@ -563,18 +558,20 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
         player.standingOnPlatform = null;
     }
 
-    // New level completion condition
     if (lastPlatformRef.current &&
         player.standingOnPlatform === lastPlatformRef.current &&
-        player.onGround && // Double check player is grounded on it
+        player.onGround &&
         !newLevelRequestedRef.current &&
         onRequestNewLevel) {
       console.log(`GameScreen: Player is ON the last platform of level ${levelId}. Platform Type: ${lastPlatformRef.current.type}. newLevelRequestedRef: ${newLevelRequestedRef.current}`);
-      newLevelRequestedRef.current = true;
-      console.log(`GameScreen: Calling onRequestNewLevel() for level ${levelId} because player is on the last platform.`);
+      
+      setIsTransitioningLevel(true); // Show transition message
+      newLevelRequestedRef.current = true; // Mark as requested to prevent multiple calls for this level
+
+      console.log(`GameScreen: Calling onRequestNewLevel() for level ${levelId}. isTransitioningLevel set to true.`);
       onRequestNewLevel();
     }
-  }, [parsedData, onRequestNewLevel, levelId]); 
+  }, [parsedData, onRequestNewLevel, levelId, isTransitioningLevel]); // Added isTransitioningLevel
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => keysPressedRef.current.add(event.code);
@@ -586,9 +583,13 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
     const app = pixiAppRef.current;
     if (app && app.ticker) {
       app.ticker.remove(gameLoop); 
-      app.ticker.add(gameLoop);
+      if (!isTransitioningLevel) { // Only add gameLoop if not transitioning
+        app.ticker.add(gameLoop);
+        console.log(`GameScreen: gameLoop added to ticker for levelId ${levelId}.`);
+      } else {
+        console.log(`GameScreen: gameLoop NOT added to ticker for levelId ${levelId} (isTransitioningLevel: true).`);
+      }
     }
-    console.log(`GameScreen: gameLoop (re)added to ticker for levelId ${levelId}.`);
 
 
     return () => {
@@ -598,7 +599,7 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
         app.ticker.remove(gameLoop);
       }
     };
-  }, [gameLoop, parsedData, levelId]); 
+  }, [gameLoop, parsedData, levelId, isTransitioningLevel]); // Added isTransitioningLevel
 
 
   return (
@@ -613,12 +614,20 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
           aria-label="Game canvas"
           data-ai-hint="gameplay screenshot"
         />
+        {isTransitioningLevel && (
+          <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center text-center text-foreground z-20 p-4 rounded-b-lg">
+            <Loader2 className="w-12 h-12 animate-spin text-primary mb-4" />
+            <p className="text-2xl font-bold mb-2">
+              Level {levelId} Complete!
+            </p>
+            <p className="text-lg">
+              Generating Level {levelId ? levelId + 1 : 'Next'}...
+            </p>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
 };
 
 export default GameScreen;
-
-
-    
