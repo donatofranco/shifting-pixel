@@ -12,6 +12,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Loader2, SlidersHorizontal, Gamepad2, TimerIcon } from 'lucide-react';
 import LevelGeneratorForm from '@/components/game/LevelGeneratorForm';
 import ControlsGuide from '@/components/game/ControlsGuide';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
 
 
 interface GameScreenProps {
@@ -21,18 +23,23 @@ interface GameScreenProps {
   isLoading: boolean;
   onManualLevelGenerated: (data: GenerateLevelOutput) => void;
   setIsLoadingLevelFromForm: (isLoading: boolean) => void;
-  defaultLevelParams: Pick<GenerateLevelInput, 'difficulty'>; // Expecting only difficulty
+  defaultLevelParams: Pick<GenerateLevelInput, 'difficulty'>;
+  gameStarted: boolean;
+  onStartGame: (difficulty: GenerateLevelInput['difficulty']) => void;
 }
 
 const parseLevelData = (levelDataString: string | undefined): ParsedLevelData | null => {
   if (!levelDataString) return null;
   try {
-    const data = JSON.parse(levelDataString);
+    // Ensure no leading/trailing whitespace that could break JSON.parse
+    const trimmedData = levelDataString.trim();
+    if (!trimmedData) return null; // Handle case where trim results in empty string
+    const data = JSON.parse(trimmedData);
     if (!data.platforms || !Array.isArray(data.platforms)) data.platforms = [];
     data.obstacles = []; 
     return data as ParsedLevelData;
   } catch (error) {
-    console.error("Failed to parse level data for GameScreen:", error);
+    console.error("Failed to parse level data for GameScreen:", error, "Data string:", levelDataString);
     return null;
   }
 };
@@ -110,7 +117,9 @@ const GameScreen: FC<GameScreenProps> = ({
   isLoading,
   onManualLevelGenerated,
   setIsLoadingLevelFromForm,
-  defaultLevelParams
+  defaultLevelParams,
+  gameStarted,
+  onStartGame,
 }) => {
   const pixiContainerRef = useRef<HTMLDivElement>(null);
   const pixiAppRef = useRef<PIXI.Application | null>(null);
@@ -120,6 +129,7 @@ const GameScreen: FC<GameScreenProps> = ({
   const [isControlsPopoverOpen, setIsControlsPopoverOpen] = useState<boolean>(false);
   const [elapsedTime, setElapsedTime] = useState<number>(0);
   const levelStartTimeRef = useRef<number | null>(null);
+  const [startScreenDifficulty, setStartScreenDifficulty] = useState<GenerateLevelInput['difficulty']>(defaultLevelParams.difficulty || 'medium');
 
 
   const jumpSoundRef = useRef<HTMLAudioElement | null>(null);
@@ -148,15 +158,16 @@ const GameScreen: FC<GameScreenProps> = ({
 
 
   const parsedData = useMemo(() => {
-    if (levelOutput?.levelData) {
+    if (gameStarted && levelOutput?.levelData) {
       console.log("GameScreen: New levelOutput received, parsing data for levelId:", levelId);
       return parseLevelData(levelOutput.levelData);
     }
-    console.log("GameScreen: levelOutput is null for levelId:", levelId);
+    console.log("GameScreen: gameStarted is false or levelOutput is null for levelId:", levelId);
     return null;
-  }, [levelOutput, levelId]);
+  }, [levelOutput, levelId, gameStarted]);
 
   useEffect(() => {
+    if (!gameStarted) return; // Don't run if game hasn't started
     console.log(`GameScreen: useEffect for levelId. Current levelId: ${levelId}, prevLevelIdRef: ${prevLevelIdRef.current}`);
     if (levelId !== undefined && levelId > 0 && prevLevelIdRef.current !== levelId) {
         if (prevLevelIdRef.current !== undefined && !(prevLevelIdRef.current === 0 && levelId ===1) ) { 
@@ -167,45 +178,58 @@ const GameScreen: FC<GameScreenProps> = ({
         levelStartTimeRef.current = Date.now();
     }
     prevLevelIdRef.current = levelId;
-  }, [levelId]);
+  }, [levelId, gameStarted]);
 
   useEffect(() => {
-    if (pixiContainerRef.current && !pixiAppRef.current) {
-      if (PIXI.TextureSource && PIXI.SCALE_MODES) {
-         PIXI.TextureSource.defaultOptions.scaleMode = PIXI.SCALE_MODES.NEAREST;
+    // PixiJS setup, only if game has started and not already initialized
+    if (!gameStarted || !pixiContainerRef.current || pixiAppRef.current) {
+      if (!gameStarted && pixiAppRef.current) { // If game stops, destroy Pixi app
+        pixiAppRef.current.destroy(true, { children: true, texture: true, baseTexture: true });
+        pixiAppRef.current = null;
+        gameContainerRef.current = null;
+        playerRef.current = null;
+        platformObjectsRef.current = [];
+        lastPlatformRef.current = null;
+      }
+      return;
+    }
+
+    if (PIXI.TextureSource && PIXI.SCALE_MODES) {
+        PIXI.TextureSource.defaultOptions.scaleMode = PIXI.SCALE_MODES.NEAREST;
+    }
+
+    const app = new PIXI.Application();
+
+    (async () => {
+      await app.init({
+        backgroundAlpha: 0,
+        resizeTo: pixiContainerRef.current!,
+        antialias: false,
+      });
+
+      if (pixiContainerRef.current) { // Ensure ref is still valid
+        while (pixiContainerRef.current.firstChild) {
+          pixiContainerRef.current.removeChild(pixiContainerRef.current.firstChild);
+        }
+        pixiContainerRef.current.appendChild(app.view as HTMLCanvasElement);
+      }
+      pixiAppRef.current = app;
+
+      const gameContainer = new PIXI.Container();
+      app.stage.addChild(gameContainer);
+      gameContainerRef.current = gameContainer;
+
+      // Load sounds
+      jumpSoundRef.current = new Audio('/sounds/jump.wav');
+      deathSoundRef.current = new Audio('/sounds/death.wav');
+      winSoundRef.current = new Audio('/sounds/win.wav');
+
+      if (levelId > 0) { 
+          levelStartTimeRef.current = Date.now();
       }
 
-      const app = new PIXI.Application();
-
-      (async () => {
-        await app.init({
-          backgroundAlpha: 0,
-          resizeTo: pixiContainerRef.current!,
-          antialias: false,
-        });
-
-        if (pixiContainerRef.current) {
-          while (pixiContainerRef.current.firstChild) {
-            pixiContainerRef.current.removeChild(pixiContainerRef.current.firstChild);
-          }
-          pixiContainerRef.current.appendChild(app.view as HTMLCanvasElement);
-        }
-        pixiAppRef.current = app;
-
-        const gameContainer = new PIXI.Container();
-        app.stage.addChild(gameContainer);
-        gameContainerRef.current = gameContainer;
-
-        jumpSoundRef.current = new Audio('/sounds/jump.wav');
-        deathSoundRef.current = new Audio('/sounds/death.wav');
-        winSoundRef.current = new Audio('/sounds/win.wav');
-
-        if (levelId > 0) { 
-            levelStartTimeRef.current = Date.now();
-        }
-
-      })();
-    }
+    })();
+    
 
     return () => {
       if (pixiAppRef.current) {
@@ -220,9 +244,11 @@ const GameScreen: FC<GameScreenProps> = ({
       if (deathSoundRef.current) deathSoundRef.current.pause(); deathSoundRef.current = null;
       if (winSoundRef.current) winSoundRef.current.pause(); winSoundRef.current = null;
     };
-  }, []); 
+  }, [gameStarted]); // Rerun if gameStarted changes
 
   useEffect(() => {
+    if (!gameStarted) return; // Don't build level if game hasn't started
+
     const app = pixiAppRef.current;
     const gameContainer = gameContainerRef.current;
     console.log("GameScreen: useEffect for parsedData, renderer dimensions, or levelId. Current levelId:", levelId);
@@ -342,7 +368,7 @@ const GameScreen: FC<GameScreenProps> = ({
         if (playerRef.current && playerRef.current.sprite) playerRef.current.sprite.visible = false;
       }
     }
-  }, [parsedData, pixiAppRef.current?.renderer?.width, pixiAppRef.current?.renderer?.height, levelId]);
+  }, [parsedData, pixiAppRef.current?.renderer?.width, pixiAppRef.current?.renderer?.height, levelId, gameStarted]);
 
 
   const gameLoop = useCallback((delta: PIXI.TickerCallback<any>) => {
@@ -351,7 +377,7 @@ const GameScreen: FC<GameScreenProps> = ({
     const app = pixiAppRef.current;
     const gameContainer = gameContainerRef.current;
 
-    if (!player || !app || !gameContainer ) return;
+    if (!gameStarted || !player || !app || !gameContainer ) return;
     if (!parsedData || parsedData.platforms.length === 0) {
         if (player.sprite) player.sprite.visible = false;
         return;
@@ -373,7 +399,7 @@ const GameScreen: FC<GameScreenProps> = ({
         const mobileRect = { x: nextX, y: pObj.sprite.y, width: pObj.width, height: pObj.height };
         for (const otherP of platformObjectsRef.current) {
             if (pObj === otherP) continue;
-            const otherSolid = !((otherP.type === 'timed' && !otherP.isVisible) || (otherP.type === 'breakable' && (otherP.isBroken || (otherP.isBreaking && otherP.breakingTimer !== undefined && otherP.breakingTimer <=0) )));
+            const otherSolid = !((otherP.type === 'timed' && !otherP.isVisible) || (otherP.type === 'breakable' && (otherP.isBroken || (otherP.isBreaking && otherP.breakingTimer !== undefined && p.breakingTimer <=0) )));
             if (otherSolid) {
                 const otherRect = { x: otherP.sprite.x, y: otherP.sprite.y, width: otherP.width, height: otherP.height };
                 if (checkCollision(mobileRect, otherRect)) { pObj.moveDirectionX *= -1; nextX = pObj.sprite.x; collided = true; break; }
@@ -393,7 +419,7 @@ const GameScreen: FC<GameScreenProps> = ({
         const verticalMobileRect = { x: pObj.sprite.x, y: nextY, width: pObj.width, height: pObj.height };
         for (const otherP of platformObjectsRef.current) {
             if (pObj === otherP) continue;
-            const otherSolid = !((otherP.type === 'timed' && !otherP.isVisible) || (otherP.type === 'breakable' && (otherP.isBroken || (otherP.isBreaking && otherP.breakingTimer !== undefined && otherP.breakingTimer <=0) )));
+            const otherSolid = !((otherP.type === 'timed' && !otherP.isVisible) || (otherP.type === 'breakable' && (otherP.isBroken || (otherP.isBreaking && otherP.breakingTimer !== undefined && p.breakingTimer <=0) )));
             if (otherSolid) {
                 const otherRect = { x: otherP.sprite.x, y: otherP.sprite.y, width: otherP.width, height: otherP.height };
                 if (checkCollision(verticalMobileRect, otherRect)) { pObj.moveDirectionY *= -1; nextY = pObj.sprite.y; collided = true; break; }
@@ -564,11 +590,11 @@ const GameScreen: FC<GameScreenProps> = ({
         gameContainer.y += (targetY - gameContainer.y) * CAMERA_LERP_FACTOR;
     }
 
-  }, [parsedData, onRequestNewLevel, levelId, isLoading, deathCount, isFormPopoverOpen, isControlsPopoverOpen, elapsedTime]); // Added elapsedTime to dependencies
+  }, [parsedData, onRequestNewLevel, levelId, isLoading, deathCount, isFormPopoverOpen, isControlsPopoverOpen, elapsedTime, gameStarted]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-        if (isLoading || isFormPopoverOpen || isControlsPopoverOpen) return; 
+        if (!gameStarted || isLoading || isFormPopoverOpen || isControlsPopoverOpen) return; 
         keysPressedRef.current.add(event.code);
     }
     const handleKeyUp = (event: KeyboardEvent) => {
@@ -578,7 +604,7 @@ const GameScreen: FC<GameScreenProps> = ({
     window.addEventListener('keyup', handleKeyUp);
 
     const app = pixiAppRef.current;
-    if (app && app.ticker) {
+    if (gameStarted && app && app.ticker) {
       app.ticker.remove(gameLoop); 
       if (!isLoading && !isFormPopoverOpen && !isControlsPopoverOpen) { 
         app.ticker.add(gameLoop);
@@ -586,6 +612,8 @@ const GameScreen: FC<GameScreenProps> = ({
       } else {
         console.log(`GameScreen: gameLoop NOT added to ticker for levelId ${levelId} (isLoading: ${isLoading}, isFormPopoverOpen: ${isFormPopoverOpen}, isControlsPopoverOpen: ${isControlsPopoverOpen}).`);
       }
+    } else if (app && app.ticker) { // If game not started, ensure gameloop is removed
+        app.ticker.remove(gameLoop);
     }
 
     return () => {
@@ -596,19 +624,60 @@ const GameScreen: FC<GameScreenProps> = ({
         console.log(`GameScreen: gameLoop removed from ticker during cleanup for levelId ${levelId}.`);
       }
     };
-  }, [gameLoop, parsedData, levelId, isLoading, isFormPopoverOpen, isControlsPopoverOpen]); // gameLoop is a dependency here
+  }, [gameLoop, parsedData, levelId, isLoading, isFormPopoverOpen, isControlsPopoverOpen, gameStarted]);
 
   const handlePopoverFormSubmit = (data: GenerateLevelOutput) => {
     onManualLevelGenerated(data);
     setIsFormPopoverOpen(false); 
   };
 
+  if (!gameStarted) {
+    return (
+      <Card className="border-primary shadow-lg bg-card/80 backdrop-blur-sm flex-grow flex flex-col items-center justify-center p-6 text-center">
+        <h1 className="text-5xl font-bold text-primary uppercase tracking-widest mb-6 md:mb-10" style={{ fontFamily: 'var(--font-press-start-2p)' }}>
+          Shifting Pixel
+        </h1>
+        <div className="w-full max-w-xs flex flex-col gap-6 items-center">
+          <div className="w-full">
+            <Label htmlFor="difficulty-select-start" className="text-foreground/80 mb-2 block text-sm">
+              Select Difficulty
+            </Label>
+            <Select
+              value={startScreenDifficulty}
+              onValueChange={(value: GenerateLevelInput['difficulty']) => setStartScreenDifficulty(value)}
+            >
+              <SelectTrigger id="difficulty-select-start" className="w-full bg-input border-border focus:ring-primary h-11 text-base">
+                <SelectValue placeholder="Select difficulty" />
+              </SelectTrigger>
+              <SelectContent className="bg-popover border-border">
+                <SelectItem value="easy">Easy</SelectItem>
+                <SelectItem value="medium">Medium</SelectItem>
+                <SelectItem value="hard">Hard</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Button
+            onClick={() => onStartGame(startScreenDifficulty)}
+            className="w-full bg-accent hover:bg-accent/90 text-accent-foreground uppercase tracking-wider text-lg py-3 h-12 shadow-md hover:shadow-lg transition-shadow"
+            size="lg"
+          >
+            Start Game
+          </Button>
+        </div>
+        <div className="mt-auto pt-8 text-xs text-muted-foreground">
+          <p className="mb-1">Controls: A/D or ←/→ (Move), W/↑/Space (Jump), S/↓ (Crouch)</p>
+          <p>&copy; {new Date().getFullYear()} Shifting Pixel. All Labyrinths Reserved.</p>
+        </div>
+      </Card>
+    );
+  }
+
 
   return (
     <Card className="border-primary shadow-lg bg-card/80 backdrop-blur-sm flex-grow flex flex-col">
       <CardHeader className="flex flex-row items-center justify-between p-4">
         <CardTitle className="text-primary uppercase text-sm md:text-base tracking-wider flex items-center gap-x-2 md:gap-x-3">
-          <span>Level {levelId != null && levelId > 0 ? levelId : '...'}</span>
+          <span>Level {levelId > 0 ? levelId : '...'}</span>
           <span className="text-foreground/70">|</span>
           <span>Deaths: {deathCount}</span>
           <span className="text-foreground/70">|</span>
@@ -641,7 +710,7 @@ const GameScreen: FC<GameScreenProps> = ({
                     <LevelGeneratorForm
                         onLevelGenerated={handlePopoverFormSubmit}
                         setIsLoadingLevel={setIsLoadingLevelFromForm}
-                        initialValues={defaultLevelParams} // Pass simplified params
+                        initialValues={defaultLevelParams}
                         onFormSubmitted={() => setIsFormPopoverOpen(false)}
                     />
                 </div>
@@ -659,7 +728,7 @@ const GameScreen: FC<GameScreenProps> = ({
         {isLoading && (
           <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center text-center text-foreground z-20 p-4 rounded-b-lg">
             <Loader2 className="w-12 h-12 animate-spin text-primary mb-4" />
-            {levelId != null && levelId > 0 ? (
+            {levelId > 0 && gameStarted ? (
               <>
                 <p className="text-2xl font-bold mb-2">
                   Level {levelId} Complete!
