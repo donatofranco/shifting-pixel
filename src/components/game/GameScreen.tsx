@@ -5,7 +5,7 @@ import type { FC } from 'react';
 import { useEffect, useRef, useMemo, useCallback } from 'react';
 import * as PIXI from 'pixi.js';
 import type { GenerateLevelOutput } from '@/ai/flows/generate-level';
-import type { ParsedLevelData, Platform as PlatformData, Obstacle } from '@/types';
+import type { ParsedLevelData, Platform as PlatformData } from '@/types'; // Removed Obstacle type as it's not rendered
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 interface GameScreenProps {
@@ -17,6 +17,7 @@ const parseLevelData = (levelDataString: string | undefined): ParsedLevelData | 
   try {
     const data = JSON.parse(levelDataString);
     if (!data.platforms || !Array.isArray(data.platforms)) data.platforms = [];
+    // Obstacles are still parsed if present in data, but not used for rendering.
     if (!data.obstacles || !Array.isArray(data.obstacles)) data.obstacles = [];
     return data as ParsedLevelData;
   } catch (error) {
@@ -26,12 +27,12 @@ const parseLevelData = (levelDataString: string | undefined): ParsedLevelData | 
 };
 
 // Game constants
-const PLAYER_WIDTH = 8; 
+const PLAYER_WIDTH = 8;
 const PLAYER_HEIGHT = 16;
 const PLAYER_CROUCH_HEIGHT = 8;
-const PLAYER_SPEED = 2; 
-const JUMP_FORCE = 7; 
-const GRAVITY = 0.3; 
+const PLAYER_SPEED = 2;
+const JUMP_FORCE = 7;
+const GRAVITY = 0.3;
 const DEFAULT_PLATFORM_HEIGHT = 10;
 
 // Platform Colors (hex for Pixi)
@@ -40,8 +41,7 @@ const PLATFORM_COLOR_MOBILE = 0x0077FF;   // Blue
 const PLATFORM_COLOR_TIMED = 0xFF8C00;    // Orange
 const PLATFORM_COLOR_BREAKABLE = 0x8B4513; // Brown (SaddleBrown)
 
-const OBSTACLE_COLOR_SPIKES = 0xD30062; // Accent (Red-Violet)
-const OBSTACLE_COLOR_ENEMY = 0xFF4136; // Red
+// Removed OBSTACLE_COLOR constants
 
 const PLAYER_COLOR = 0xFFDE00; // Yellow
 
@@ -54,7 +54,7 @@ const BREAKABLE_PLATFORM_BREAK_DELAY = 0.5 * 60; // 0.5 seconds at 60 FPS before
 const BREAKABLE_PLATFORM_RESPAWN_DURATION = 5 * 60; // 5 seconds at 60 FPS to respawn
 
 // Helper function for AABB collision detection
-function checkCollision(rect1: {x: number, y: number, width: number, height: number}, 
+function checkCollision(rect1: {x: number, y: number, width: number, height: number},
                         rect2: {x: number, y: number, width: number, height: number}): boolean {
     return rect1.x < rect2.x + rect2.width &&
            rect1.x + rect1.width > rect2.x &&
@@ -79,7 +79,7 @@ interface PlatformObject {
   isBroken?: boolean;
   isBreaking?: boolean;
   breakingTimer?: number;
-  respawnTimer?: number; 
+  respawnTimer?: number;
 }
 
 
@@ -87,7 +87,7 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput }) => {
   const pixiContainerRef = useRef<HTMLDivElement>(null);
   const pixiAppRef = useRef<PIXI.Application | null>(null);
   const gameContainerRef = useRef<PIXI.Container | null>(null);
-  
+
   const playerRef = useRef<{
     sprite: PIXI.Graphics;
     x: number;
@@ -101,9 +101,9 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput }) => {
     height: number;
     standingOnPlatform: PlatformObject | null;
   } | null>(null);
-  
+
   const platformObjectsRef = useRef<PlatformObject[]>([]);
-  const obstacleObjectsRef = useRef<PIXI.Graphics[]>([]);
+  // Removed obstacleObjectsRef
   const keysPressedRef = useRef<Set<string>>(new Set());
 
   const parsedData = useMemo(() => {
@@ -115,19 +115,19 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput }) => {
 
   useEffect(() => {
     if (pixiContainerRef.current && !pixiAppRef.current) {
-      if (PIXI.TextureSource && PIXI.SCALE_MODES) { 
+      if (PIXI.TextureSource && PIXI.SCALE_MODES) {
         PIXI.TextureSource.defaultOptions.scaleMode = PIXI.SCALE_MODES.NEAREST;
       }
 
       const app = new PIXI.Application();
-      
+
       (async () => {
         await app.init({
           backgroundAlpha: 0,
           resizeTo: pixiContainerRef.current!,
-          antialias: false, 
+          antialias: false,
         });
-        
+
         if (pixiContainerRef.current) {
           while (pixiContainerRef.current.firstChild) {
             pixiContainerRef.current.removeChild(pixiContainerRef.current.firstChild);
@@ -135,7 +135,7 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput }) => {
           pixiContainerRef.current.appendChild(app.view as HTMLCanvasElement);
         }
         pixiAppRef.current = app;
-        
+
         const gameContainer = new PIXI.Container();
         app.stage.addChild(gameContainer);
         gameContainerRef.current = gameContainer;
@@ -149,7 +149,7 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput }) => {
         gameContainerRef.current = null;
         playerRef.current = null;
         platformObjectsRef.current = [];
-        obstacleObjectsRef.current = [];
+        // obstacleObjectsRef.current = []; // Already removed
       }
     };
   }, []);
@@ -159,27 +159,28 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput }) => {
     const gameContainer = gameContainerRef.current;
 
     if (app && gameContainer) {
-      gameContainer.removeChildren(); 
-      platformObjectsRef.current = []; 
-      obstacleObjectsRef.current = [];
+      gameContainer.removeChildren();
+      platformObjectsRef.current = [];
+      // obstacleObjectsRef.current = []; // Already removed
 
       if (parsedData) {
+        // Use only platforms for world bounds calculation if obstacles are not rendered
+        const elementsToBound = [...(parsedData.platforms || [])];
         let worldMinX = 0, worldMaxX = 300, worldMinY = 0, worldMaxY = 150;
-        const elements = [...(parsedData.platforms || []), ...(parsedData.obstacles || [])];
-        
-        if (elements.length > 0) {
-            worldMinX = Math.min(...elements.map(e => e.x));
-            worldMaxX = Math.max(...elements.map(e => e.x + (e.width || DEFAULT_PLATFORM_HEIGHT)));
-            worldMinY = Math.min(...elements.map(e => e.y));
-            worldMaxY = Math.max(...elements.map(e => e.y + (e.height || DEFAULT_PLATFORM_HEIGHT)));
+
+        if (elementsToBound.length > 0) {
+            worldMinX = Math.min(...elementsToBound.map(e => e.x));
+            worldMaxX = Math.max(...elementsToBound.map(e => e.x + (e.width || DEFAULT_PLATFORM_HEIGHT))); // Assuming platform width, not obstacle width
+            worldMinY = Math.min(...elementsToBound.map(e => e.y));
+            worldMaxY = Math.max(...elementsToBound.map(e => e.y + DEFAULT_PLATFORM_HEIGHT)); // Assuming platform height
         }
-        
+
         const worldWidth = Math.max(1, worldMaxX - worldMinX);
         const worldHeight = Math.max(1, worldMaxY - worldMinY);
 
         const viewWidth = app.screen.width;
         const viewHeight = app.screen.height;
-        
+
         let scale = 1;
         if (worldWidth > 0 && worldHeight > 0) {
             scale = Math.min(viewWidth / worldWidth, viewHeight / worldHeight) * 0.9;
@@ -188,13 +189,13 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput }) => {
         } else if (worldHeight > 0) {
             scale = (viewHeight / worldHeight) * 0.9;
         }
-        scale = Math.max(1, Math.floor(Math.min(scale, 5))); 
+        scale = Math.max(1, Math.floor(Math.min(scale, 5)));
 
         gameContainer.scale.set(scale);
-        
+
         const scaledWorldWidth = worldWidth * scale;
         const scaledWorldHeight = worldHeight * scale;
-        
+
         gameContainer.x = (viewWidth - scaledWorldWidth) / 2 - (worldMinX * scale);
         gameContainer.y = (viewHeight - scaledWorldHeight) / 2 - (worldMinY * scale);
 
@@ -239,32 +240,18 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput }) => {
             platformObj.isBroken = false;
             platformObj.isBreaking = false;
             platformObj.breakingTimer = 0;
-            platformObj.respawnTimer = 0; 
+            platformObj.respawnTimer = 0;
             pSprite.visible = true;
           }
           platformObjectsRef.current.push(platformObj);
         });
 
-        (parsedData.obstacles || []).forEach((obstacle: Obstacle) => {
-          const oSprite = new PIXI.Graphics();
-          const obsWidth = obstacle.width || DEFAULT_PLATFORM_HEIGHT; 
-          const obsHeight = obstacle.height || DEFAULT_PLATFORM_HEIGHT; 
-          let obstacleColor = OBSTACLE_COLOR_SPIKES;
-          if (obstacle.type === 'enemy') obstacleColor = OBSTACLE_COLOR_ENEMY;
-          else if (obstacle.type === 'spikes') obstacleColor = OBSTACLE_COLOR_SPIKES;
-
-          oSprite.rect(0, 0, obsWidth, obsHeight)
-                 .fill(obstacleColor);
-          oSprite.x = obstacle.x;
-          oSprite.y = obstacle.y; 
-          gameContainer.addChild(oSprite);
-          obstacleObjectsRef.current.push(oSprite);
-        });
+        // Removed obstacle rendering loop
 
         if (!playerRef.current) {
             const playerSprite = new PIXI.Graphics();
-            let startX = worldMinX + PLAYER_WIDTH; 
-            let startY = worldMaxY - PLAYER_HEIGHT - DEFAULT_PLATFORM_HEIGHT; 
+            let startX = worldMinX + PLAYER_WIDTH;
+            let startY = worldMaxY - PLAYER_HEIGHT - DEFAULT_PLATFORM_HEIGHT;
             if (platformObjectsRef.current.length > 0) {
                 const firstPlatform = platformObjectsRef.current.find(p => p.type === 'standard' || !p.type) || platformObjectsRef.current[0];
                 startX = firstPlatform.sprite.x + firstPlatform.width / 2 - PLAYER_WIDTH / 2;
@@ -297,7 +284,7 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput }) => {
             playerRef.current.sprite.x = playerRef.current.x;
             playerRef.current.sprite.y = playerRef.current.y;
             playerRef.current.onGround = false;
-            playerRef.current.isJumping = true; 
+            playerRef.current.isJumping = true;
             playerRef.current.standingOnPlatform = null;
             if (!gameContainer.children.includes(playerRef.current.sprite)) {
                  gameContainer.addChild(playerRef.current.sprite);
@@ -307,9 +294,9 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput }) => {
         if (playerRef.current && gameContainer.children.includes(playerRef.current.sprite)) {
             gameContainer.removeChild(playerRef.current.sprite);
         }
-        playerRef.current = null; 
+        playerRef.current = null;
         platformObjectsRef.current = [];
-        obstacleObjectsRef.current = [];
+        // obstacleObjectsRef.current = []; // Already removed
       }
     }
   }, [parsedData, pixiAppRef.current?.renderer?.width, pixiAppRef.current?.renderer?.height]);
@@ -323,60 +310,56 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput }) => {
 
     // --- 1. Update Platforms State ---
     platformObjectsRef.current.forEach(pObj => {
-      pObj.currentSpeedX = 0; 
+      pObj.currentSpeedX = 0;
 
       if (pObj.type === 'mobile' && pObj.moveDirection !== undefined && pObj.moveRange !== undefined) {
         const prevSpriteX = pObj.sprite.x;
         let nextX = pObj.sprite.x + (MOBILE_PLATFORM_SPEED * pObj.moveDirection);
         let collided = false;
 
-        // Check for collision with its movement range limits
         if (pObj.moveDirection === 1 && nextX > pObj.initialX + pObj.moveRange) {
             nextX = pObj.initialX + pObj.moveRange;
-            pObj.moveDirection = -1; 
-            collided = true; // Considered a "collision" with its boundary
+            pObj.moveDirection = -1;
+            collided = true;
         } else if (pObj.moveDirection === -1 && nextX < pObj.initialX - pObj.moveRange) {
             nextX = pObj.initialX - pObj.moveRange;
             pObj.moveDirection = 1;
-            collided = true; // Considered a "collision" with its boundary
+            collided = true;
         }
-        
-        // Check for collision with other platforms
-        if (!collided) { // Only check if not already "collided" with range boundary
-            const mobilePlatformRect = { 
-                x: nextX, 
-                y: pObj.sprite.y, 
-                width: pObj.width, 
-                height: pObj.height 
+
+        if (!collided) {
+            const mobilePlatformRect = {
+                x: nextX,
+                y: pObj.sprite.y,
+                width: pObj.width,
+                height: pObj.height
             };
 
             for (const otherP of platformObjectsRef.current) {
-                if (pObj === otherP) continue; // Don't collide with self
+                if (pObj === otherP) continue;
 
-                // Only collide with solid platforms
-                const otherIsSolid = 
+                const otherIsSolid =
                     !(otherP.type === 'timed' && !otherP.isVisible) &&
                     !(otherP.type === 'breakable' && (otherP.isBroken || (otherP.isBreaking && otherP.breakingTimer !== undefined && otherP.breakingTimer <=0) ));
 
                 if (otherIsSolid) {
-                    const otherPlatformRect = { 
-                        x: otherP.sprite.x, 
-                        y: otherP.sprite.y, 
-                        width: otherP.width, 
-                        height: otherP.height 
+                    const otherPlatformRect = {
+                        x: otherP.sprite.x,
+                        y: otherP.sprite.y,
+                        width: otherP.width,
+                        height: otherP.height
                     };
                     if (checkCollision(mobilePlatformRect, otherPlatformRect)) {
-                        pObj.moveDirection *= -1; // Reverse direction
-                        nextX = pObj.sprite.x; // Don't move this frame
+                        pObj.moveDirection *= -1;
+                        nextX = pObj.sprite.x;
                         collided = true;
-                        break; 
+                        break;
                     }
                 }
             }
         }
         pObj.sprite.x = nextX;
         pObj.currentSpeedX = pObj.sprite.x - prevSpriteX;
-
       }
 
 
@@ -388,7 +371,7 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput }) => {
           pObj.timer = pObj.isVisible ? pObj.visibleDuration : pObj.hiddenDuration;
         }
       }
-      
+
       if (pObj.type === 'breakable') {
         if (pObj.isBreaking && pObj.breakingTimer !== undefined && pObj.breakingTimer > 0) {
           pObj.breakingTimer--;
@@ -399,7 +382,7 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput }) => {
             pObj.isBreaking = false;
             if (player.standingOnPlatform === pObj) {
               player.standingOnPlatform = null;
-              player.onGround = false; 
+              player.onGround = false;
             }
           }
         } else if (pObj.isBroken && pObj.respawnTimer !== undefined) {
@@ -418,11 +401,11 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput }) => {
         player.x += player.standingOnPlatform.currentSpeedX;
       }
     }
-    
+
     // --- 3. Handle Player Input and State ---
     const wasCrouching = player.isCrouching;
     player.isCrouching = (keys.has('KeyS') || keys.has('ArrowDown')) && player.onGround;
-    
+
     player.height = player.isCrouching ? PLAYER_CROUCH_HEIGHT : PLAYER_HEIGHT;
     if (wasCrouching && !player.isCrouching) {
         player.y -= (PLAYER_HEIGHT - PLAYER_CROUCH_HEIGHT);
@@ -447,18 +430,18 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput }) => {
         player.vy += GRAVITY;
     } else {
        if (player.vy < 0 && !player.isJumping) player.vy = 0;
-       else if (player.vy > 0) player.vy =0; 
+       else if (player.vy > 0) player.vy =0;
     }
-    
+
     // --- 5. Update Player Position Based on Velocity ---
     const prevPlayerX = player.x;
     player.x += player.vx;
 
     const prevPlayerY = player.y;
     player.y += player.vy;
-    
+
     // --- 6. Collision Detection and Response ---
-    player.onGround = false; 
+    player.onGround = false;
     if (player.standingOnPlatform) {
         const p = player.standingOnPlatform;
         if ((p.type === 'timed' && !p.isVisible) || (p.type === 'breakable' && p.isBroken)) {
@@ -476,15 +459,15 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput }) => {
     // Horizontal Collision
     for (const pObj of collidablePlatforms) {
         const platformRect = { x: pObj.sprite.x, y: pObj.sprite.y, width: pObj.width, height: pObj.height };
-        const playerRect = { x: player.x, y: prevPlayerY, width: player.width, height: player.height }; 
+        const playerRect = { x: player.x, y: prevPlayerY, width: player.width, height: player.height };
 
         if (checkCollision(playerRect, platformRect)) {
-            if (player.vx > 0) { 
+            if (player.vx > 0) {
                 player.x = platformRect.x - player.width;
-            } else if (player.vx < 0) { 
+            } else if (player.vx < 0) {
                 player.x = platformRect.x + platformRect.width;
             }
-            player.vx = 0; 
+            player.vx = 0;
         }
     }
 
@@ -494,28 +477,28 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput }) => {
         const playerRectForVerticalCheck = { x: player.x, y: player.y, width: player.width, height: player.height };
 
         if (checkCollision(playerRectForVerticalCheck, platformRect)) {
-            if (player.vy > 0) { 
-                if (prevPlayerY + player.height <= platformRect.y + 1) { 
+            if (player.vy > 0) {
+                if (prevPlayerY + player.height <= platformRect.y + 1) {
                     player.y = platformRect.y - player.height;
                     player.vy = 0;
                     player.isJumping = false;
                     player.onGround = true;
-                    player.standingOnPlatform = pObj; 
+                    player.standingOnPlatform = pObj;
 
                     if (pObj.type === 'breakable' && !pObj.isBroken && !pObj.isBreaking) {
                         pObj.isBreaking = true;
                         pObj.breakingTimer = BREAKABLE_PLATFORM_BREAK_DELAY;
                     }
                 }
-            } else if (player.vy < 0) { 
-                if (prevPlayerY >= platformRect.y + platformRect.height -1 ) { 
+            } else if (player.vy < 0) {
+                if (prevPlayerY >= platformRect.y + platformRect.height -1 ) {
                     player.y = platformRect.y + platformRect.height;
-                    player.vy = 0; 
+                    player.vy = 0;
                 }
             }
         }
     }
-    
+
     if (!player.onGround) {
         let stillOnValidPlatform = false;
         if (player.standingOnPlatform) {
@@ -525,7 +508,7 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput }) => {
                  const playerFeetY = player.y + player.height;
                  if (player.x + player.width > platformRect.x &&
                      player.x < platformRect.x + platformRect.width &&
-                     playerFeetY >= platformRect.y && playerFeetY < platformRect.y + Math.abs(player.vy) + GRAVITY + 1) { 
+                     playerFeetY >= platformRect.y && playerFeetY < platformRect.y + Math.abs(player.vy) + GRAVITY + 1) {
                      player.y = platformRect.y - player.height;
                      player.vy = 0;
                      player.isJumping = false;
@@ -547,52 +530,54 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput }) => {
     player.sprite.rect(0, 0, player.width, player.height).fill(PLAYER_COLOR);
 
     // --- World Bounds (Simple Reset) ---
-    let gameWorldMaxY = 150; 
-    if (parsedData.platforms.length > 0) {
+    let gameWorldMaxY = 150;
+    if (parsedData.platforms.length > 0) { // Only consider platforms for fall boundary
          gameWorldMaxY = Math.max(...parsedData.platforms.map(p => p.y + DEFAULT_PLATFORM_HEIGHT));
-    } else if (parsedData.obstacles.length > 0) {
-         gameWorldMaxY = Math.max(...parsedData.obstacles.map(o => o.y + (o.height || DEFAULT_PLATFORM_HEIGHT)));
     }
+    // If no platforms, use a default or previously calculated worldMaxY from initial parsing if that makes sense.
+    // For simplicity now, if no platforms, player might fall off screen if not handled by a default boundary.
+    // Or, we ensure gameWorldMaxY is at least a minimum if parsedData.platforms is empty.
+    else if (gameContainerRef.current) { // Fallback if no platforms
+        gameWorldMaxY = (gameContainerRef.current.height / (gameContainerRef.current.scale.y || 1)) - PLAYER_HEIGHT - 50;
+    }
+
+
     const fallBoundary = gameWorldMaxY + 100;
 
 
-    if (player.y > fallBoundary) { 
+    if (player.y > fallBoundary) {
         if (platformObjectsRef.current.length > 0) {
             const respawnPlatform = platformObjectsRef.current.find(p => p.type === 'standard' || !p.type) || platformObjectsRef.current[0];
             player.x = respawnPlatform.sprite.x + respawnPlatform.width / 2 - player.width / 2;
             player.y = respawnPlatform.sprite.y - player.height;
-        } else { 
-            const firstObstacle = parsedData.obstacles[0];
-            if(firstObstacle) {
-                player.x = firstObstacle.x;
-                player.y = firstObstacle.y - player.height;
-            } else {
-                 const gameContainerWidth = gameContainerRef.current?.width ?? pixiAppRef.current.screen.width;
-                 const gameContainerHeight = gameContainerRef.current?.height ?? pixiAppRef.current.screen.height;
-                 const gameScaleX = gameContainerRef.current?.scale.x ?? 1;
-                 const gameScaleY = gameContainerRef.current?.scale.y ?? 1;
+        } else {
+             // Fallback respawn if no platforms exist (e.g., an empty level or only obstacles were generated and now ignored)
+             // This attempts to place the player somewhere in the view.
+             const gameContainerWidth = gameContainerRef.current?.width ?? pixiAppRef.current.screen.width;
+             const gameContainerHeight = gameContainerRef.current?.height ?? pixiAppRef.current.screen.height;
+             const gameScaleX = gameContainerRef.current?.scale.x ?? 1;
+             const gameScaleY = gameContainerRef.current?.scale.y ?? 1;
 
-                 player.x = (gameContainerWidth / gameScaleX) / 2 - player.width / 2; 
-                 player.y = (gameContainerHeight / gameScaleY) - player.height - 50; 
-            }
+             player.x = (gameContainerWidth / gameScaleX) / 2 - player.width / 2;
+             player.y = (gameContainerHeight / gameScaleY) - player.height - 50; // Place near bottom of visible area
         }
         player.vy = 0;
-        player.isJumping = false; 
-        player.onGround = false; 
+        player.isJumping = false;
+        player.onGround = false;
         player.standingOnPlatform = null;
     }
 
-  }, [parsedData]); 
+  }, [parsedData]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => keysPressedRef.current.add(event.code);
     const handleKeyUp = (event: KeyboardEvent) => keysPressedRef.current.delete(event.code);
 
-    window.addEventListener('keydown', handleKeyDown); 
+    window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
 
     const app = pixiAppRef.current;
-    if (app && app.ticker && parsedData) { 
+    if (app && app.ticker && parsedData) {
       app.ticker.add(gameLoop);
     }
 
@@ -603,7 +588,7 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput }) => {
         app.ticker.remove(gameLoop);
       }
     };
-  }, [gameLoop, parsedData]); 
+  }, [gameLoop, parsedData]);
 
 
   return (
@@ -612,9 +597,9 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput }) => {
         <CardTitle className="text-primary uppercase text-xl tracking-wider">Game Screen</CardTitle>
       </CardHeader>
       <CardContent className="flex-grow p-0 m-0 relative overflow-hidden">
-        <div 
+        <div
           ref={pixiContainerRef}
-          className="w-full h-full bg-black/50 rounded-b-lg" 
+          className="w-full h-full bg-black/50 rounded-b-lg"
           aria-label="Game canvas"
           data-ai-hint="gameplay screenshot"
         />
@@ -624,4 +609,3 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput }) => {
 };
 
 export default GameScreen;
-    
