@@ -4,7 +4,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { GenerateLevelOutput, GenerateLevelInput } from '@/ai/flows/generate-level';
 import SiteHeader from '@/components/layout/SiteHeader';
-import LevelGeneratorForm from '@/components/game/LevelGeneratorForm';
+// LevelGeneratorForm import removed
 import GameScreen from '@/components/game/GameScreen';
 import ControlsGuide from '@/components/game/ControlsGuide';
 import { handleGenerateLevelAction } from '@/app/actions';
@@ -38,7 +38,7 @@ export default function HomePage() {
           title: `Level ${nextLevelNumber} Generation Failed`,
           description: result.error || "An unknown error occurred.",
         });
-        setGeneratedLevel(null); // Explicitly set to null on error
+        setGeneratedLevel(null);
       } else {
         console.log(`HomePage: Level ${nextLevelNumber} generated successfully.`);
         setGeneratedLevel(result);
@@ -55,7 +55,7 @@ export default function HomePage() {
         title: "Error",
         description: `An unexpected error occurred while generating level ${nextLevelNumber}.`,
       });
-      setGeneratedLevel(null); // Explicitly set to null on error
+      setGeneratedLevel(null);
     } finally {
       setIsLoadingLevel(false);
     }
@@ -73,8 +73,8 @@ export default function HomePage() {
     const newLevelNumber = levelCount === 0 ? 1 : levelCount + 1;
     console.log(`HomePage: Manual generation for Level ${newLevelNumber}.`);
     setGeneratedLevel(data);
-    setLevelCount(newLevelNumber); // Update levelCount
-    setIsLoadingLevel(false); // Ensure loading is false after manual gen
+    setLevelCount(newLevelNumber); 
+    setIsLoadingLevel(false); 
     toast({
       title: `Level ${newLevelNumber} Generated Manually!`,
       description: "The new level is ready for play.",
@@ -83,7 +83,6 @@ export default function HomePage() {
 
   const handleRequestNewLevel = useCallback(() => {
     console.log(`HomePage: handleRequestNewLevel called. Current levelCount: ${levelCount}. Requesting Level ${levelCount + 1}.`);
-    // DEFAULT_LEVEL_PARAMS can be adjusted here if desired for subsequent levels
     triggerLevelGeneration(DEFAULT_LEVEL_PARAMS);
   }, [triggerLevelGeneration, levelCount]);
 
@@ -92,13 +91,8 @@ export default function HomePage() {
       <SiteHeader title="Shifting Pixel" />
       <div className="flex-grow container mx-auto px-2 py-4 md:px-4 md:py-8">
         <div className="flex flex-col lg:flex-row gap-6 md:gap-8">
-          {/* Left Column / Control Panel */}
+          {/* Left Column / Control Panel - Now only contains ControlsGuide */}
           <aside className="w-full lg:w-1/3 xl:w-1/4 space-y-6 md:space-y-8">
-            <LevelGeneratorForm
-              onLevelGenerated={handleManualLevelGeneration}
-              setIsLoadingLevel={setIsLoadingLevel} 
-              initialValues={DEFAULT_LEVEL_PARAMS}
-            />
             <ControlsGuide />
           </aside>
 
@@ -109,8 +103,10 @@ export default function HomePage() {
               onRequestNewLevel={handleRequestNewLevel}
               levelId={levelCount} 
               isLoading={isLoadingLevel}
+              onManualLevelGenerated={handleManualLevelGeneration}
+              setIsLoadingLevelFromForm={setIsLoadingLevel}
+              defaultLevelParams={DEFAULT_LEVEL_PARAMS}
             />
-            {/* LevelPreview component removed from here */}
           </main>
         </div>
       </div>

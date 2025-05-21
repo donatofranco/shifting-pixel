@@ -4,16 +4,23 @@
 import type { FC } from 'react';
 import { useEffect, useRef, useMemo, useCallback, useState } from 'react';
 import * as PIXI from 'pixi.js';
-import type { GenerateLevelOutput } from '@/ai/flows/generate-level';
+import type { GenerateLevelOutput, GenerateLevelInput } from '@/ai/flows/generate-level';
 import type { ParsedLevelData, Platform as PlatformData } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Loader2, SlidersHorizontal } from 'lucide-react';
+import LevelGeneratorForm from '@/components/game/LevelGeneratorForm';
+
 
 interface GameScreenProps {
   levelOutput: GenerateLevelOutput | null;
   onRequestNewLevel?: () => void;
-  levelId?: number; // 0 if no level loaded, 1 for first level, etc.
-  isLoading: boolean; // True if a level is currently being generated
+  levelId?: number; 
+  isLoading: boolean;
+  onManualLevelGenerated: (data: GenerateLevelOutput) => void;
+  setIsLoadingLevelFromForm: (isLoading: boolean) => void;
+  defaultLevelParams: GenerateLevelInput;
 }
 
 const parseLevelData = (levelDataString: string | undefined): ParsedLevelData | null => {
@@ -21,7 +28,7 @@ const parseLevelData = (levelDataString: string | undefined): ParsedLevelData | 
   try {
     const data = JSON.parse(levelDataString);
     if (!data.platforms || !Array.isArray(data.platforms)) data.platforms = [];
-    data.obstacles = [];
+    data.obstacles = []; 
     return data as ParsedLevelData;
   } catch (error) {
     console.error("Failed to parse level data for GameScreen:", error);
@@ -38,23 +45,24 @@ const GRAVITY = 0.3;
 const DEFAULT_PLATFORM_HEIGHT = 10;
 
 const PLATFORM_COLOR_STANDARD = 0x9400D3;
-const PLATFORM_COLOR_MOBILE = 0x0077FF;
+const PLATFORM_COLOR_MOBILE = 0x0077FF; 
 const PLATFORM_COLOR_VERTICAL_MOBILE = 0x00D377;
-const PLATFORM_COLOR_TIMED = 0xFF8C00;
-const PLATFORM_COLOR_BREAKABLE = 0x8B4513;
+const PLATFORM_COLOR_TIMED = 0xFF8C00; 
+const PLATFORM_COLOR_BREAKABLE = 0x8B4513; 
 
 const PLAYER_COLOR = 0xFFDE00;
 
 const DEFAULT_PLATFORM_MOVE_SPEED = 0.5;
 const DEFAULT_PLATFORM_MOVE_RANGE = 50;
-const TIMED_PLATFORM_VISIBLE_DURATION = 3 * 60;
-const TIMED_PLATFORM_HIDDEN_DURATION = 2 * 60;
-const BREAKABLE_PLATFORM_BREAK_DELAY = 0.5 * 60;
-const BREAKABLE_PLATFORM_RESPAWN_DURATION = 5 * 60;
+const TIMED_PLATFORM_VISIBLE_DURATION = 3 * 60; 
+const TIMED_PLATFORM_HIDDEN_DURATION = 2 * 60; 
+const BREAKABLE_PLATFORM_BREAK_DELAY = 0.5 * 60; 
+const BREAKABLE_PLATFORM_RESPAWN_DURATION = 5 * 60; 
 
 const CAMERA_LERP_FACTOR = 0.1;
 const DESIRED_GAME_SCALE = 2.5;
 const CROUCH_CAMERA_VIEW_ADJUST_WORLD = 20;
+
 
 function checkCollision(rect1: {x: number, y: number, width: number, height: number},
                         rect2: {x: number, y: number, width: number, height: number}): boolean {
@@ -88,15 +96,24 @@ interface PlatformObject {
 }
 
 
-const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, levelId = 0, isLoading }) => {
+const GameScreen: FC<GameScreenProps> = ({ 
+  levelOutput, 
+  onRequestNewLevel, 
+  levelId = 0, 
+  isLoading,
+  onManualLevelGenerated,
+  setIsLoadingLevelFromForm,
+  defaultLevelParams
+}) => {
   const pixiContainerRef = useRef<HTMLDivElement>(null);
   const pixiAppRef = useRef<PIXI.Application | null>(null);
   const gameContainerRef = useRef<PIXI.Container | null>(null);
   const [deathCount, setDeathCount] = useState<number>(0);
+  const [isFormPopoverOpen, setIsFormPopoverOpen] = useState<boolean>(false);
+
   const jumpSoundRef = useRef<HTMLAudioElement | null>(null);
   const deathSoundRef = useRef<HTMLAudioElement | null>(null);
   const winSoundRef = useRef<HTMLAudioElement | null>(null);
-
 
   const playerRef = useRef<{
     sprite: PIXI.Graphics;
@@ -130,9 +147,8 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
 
   useEffect(() => {
     console.log(`GameScreen: useEffect for levelId. Current levelId: ${levelId}, prevLevelIdRef: ${prevLevelIdRef.current}`);
-    // Reset newLevelRequestedRef when a new level actually starts (levelId changes and is > 0)
     if (levelId !== undefined && levelId > 0 && prevLevelIdRef.current !== levelId) {
-        if (prevLevelIdRef.current !== undefined) { // Avoid resetting on initial load from undefined to 0 or 1
+        if (prevLevelIdRef.current !== undefined) { 
             newLevelRequestedRef.current = false;
             console.log(`GameScreen: New level detected (ID: ${levelId} from prev ${prevLevelIdRef.current}). newLevelRequestedRef reset.`);
         }
@@ -407,12 +423,12 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
                 if (pSolid && checkCollision(uncrouchRect, pRect)) { canUncrouch = false; break; }
             }
             if (canUncrouch) { player.y -= heightDiff; player.height = PLAYER_HEIGHT; }
-            else { player.isCrouching = true; }
+            else { player.isCrouching = true; } // Stay crouching if cannot uncrouch
         }
     }
 
     player.vx = 0;
-    if (!player.isCrouching) {
+    if (!player.isCrouching) { // Only allow horizontal movement if not crouching
         if (keys.has('KeyA') || keys.has('ArrowLeft')) player.vx = -PLAYER_SPEED;
         if (keys.has('KeyD') || keys.has('ArrowRight')) player.vx = PLAYER_SPEED;
     }
@@ -423,16 +439,19 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
     }
 
     if (!player.onGround) player.vy += GRAVITY;
-    else { if (player.vy > 0) player.vy = 0; }
+    else { if (player.vy > 0) player.vy = 0; } // Stop downward movement if on ground
 
+    // Horizontal collision
     const prevPlayerX = player.x; player.x += player.vx;
+    // Vertical collision is handled after applying gravity and jump force
+
     const prevPlayerY = player.y; player.y += player.vy;
 
-    player.onGround = false;
-    if (player.standingOnPlatform) {
+    player.onGround = false; // Assume not on ground until collision detection proves otherwise
+    if (player.standingOnPlatform) { // Check if the platform player was standing on still exists/is valid
         const p = player.standingOnPlatform;
         if ((p.type === 'timed' && !p.isVisible) || (p.type === 'breakable' && p.isBroken)) {
-            player.standingOnPlatform = null;
+            player.standingOnPlatform = null; // Platform disappeared
         }
     }
 
@@ -442,43 +461,48 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
       return true;
     });
 
+    // Horizontal collision resolution
     for (const pObj of collidablePlatforms) {
         const pRect = { x: pObj.sprite.x, y: pObj.sprite.y, width: pObj.width, height: pObj.height };
-        const playerHRect = { x: player.x, y: prevPlayerY, width: player.width, height: player.height };
+        const playerHRect = { x: player.x, y: prevPlayerY, width: player.width, height: player.height }; // Use y before vertical movement for horizontal check
         if (checkCollision(playerHRect, pRect)) {
-            if (player.vx > 0) player.x = pRect.x - player.width;
-            else if (player.vx < 0) player.x = pRect.x + pRect.width;
-            player.vx = 0;
+            if (player.vx > 0) player.x = pRect.x - player.width; // Moving right
+            else if (player.vx < 0) player.x = pRect.x + pRect.width; // Moving left
+            player.vx = 0; // Stop horizontal movement
         }
     }
 
+    // Vertical collision resolution
     for (const pObj of collidablePlatforms) {
         const pRect = { x: pObj.sprite.x, y: pObj.sprite.y, width: pObj.width, height: pObj.height };
-        const playerVRect = { x: player.x, y: player.y, width: player.width, height: player.height };
+        const playerVRect = { x: player.x, y: player.y, width: player.width, height: player.height }; // Use x after horizontal collision resolution
         if (checkCollision(playerVRect, pRect)) {
-            if (player.vy > 0) {
-                if (prevPlayerY + player.height <= pRect.y + 1) {
+            if (player.vy > 0) { // Moving down (falling or landing)
+                // Ensure player was above or at the platform's top edge in the previous frame
+                if (prevPlayerY + player.height <= pRect.y + 1) { // +1 for a small tolerance
                     player.y = pRect.y - player.height; player.vy = 0; player.isJumping = false; player.onGround = true;
                     player.standingOnPlatform = pObj;
                     if (pObj.type === 'breakable' && !pObj.isBroken && !pObj.isBreaking) {
                         pObj.isBreaking = true; pObj.breakingTimer = BREAKABLE_PLATFORM_BREAK_DELAY;
                     }
                 }
-            } else if (player.vy < 0) {
-                if (prevPlayerY >= pRect.y + pRect.height - 1) {
-                    player.y = pRect.y + pRect.height; player.vy = 0;
+            } else if (player.vy < 0) { // Moving up (jumping)
+                 // Ensure player was below or at the platform's bottom edge in the previous frame
+                if (prevPlayerY >= pRect.y + pRect.height - 1) { // -1 for a small tolerance
+                    player.y = pRect.y + pRect.height; player.vy = 0; // Bonk head
                 }
             }
         }
     }
 
+    // Re-check if still on a platform if onGround was set to false due to platform disappearing
     if (!player.onGround && player.standingOnPlatform) {
         let stillOn = false; const p = player.standingOnPlatform;
         if (!((p.type === 'timed' && !p.isVisible) || (p.type === 'breakable' && p.isBroken))) {
              const pRect = { x: p.sprite.x, y: p.sprite.y, width: p.width, height: p.height };
              const pFeetY = player.y + player.height;
              if (player.x + player.width > pRect.x && player.x < pRect.x + pRect.width &&
-                 pFeetY >= pRect.y && pFeetY < pRect.y + Math.abs(player.vy) + GRAVITY + 1) {
+                 pFeetY >= pRect.y && pFeetY < pRect.y + Math.abs(player.vy) + GRAVITY + 1) { // Check within a small vertical window
                  player.y = pRect.y - player.height; player.vy = 0; player.isJumping = false;
                  player.onGround = true; stillOn = true;
              }
@@ -491,22 +515,24 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
 
     let gameWorldMaxY = 1000; 
     if (parsedData && parsedData.platforms.length > 0) {
-         gameWorldMaxY = Math.max(...parsedData.platforms.map(p => p.y + DEFAULT_PLATFORM_HEIGHT)) + 200;
+         gameWorldMaxY = Math.max(...parsedData.platforms.map(p => p.y + DEFAULT_PLATFORM_HEIGHT)) + 200; // Fall boundary
     }
-    if (player.y > gameWorldMaxY) {
+    if (player.y > gameWorldMaxY) { // Player fell off
+        console.log(`GameScreen: Player fell off map at level ${levelId}.`);
         setDeathCount(prev => prev + 1);
         if (deathSoundRef.current) { deathSoundRef.current.currentTime = 0; deathSoundRef.current.play().catch(e => console.warn("Death sound err:", e)); }
+        // Reset player position
         if (platformObjectsRef.current.length > 0) {
             const respawnP = platformObjectsRef.current.find(p => p.type === 'standard' || !p.type) || platformObjectsRef.current[0];
             player.x = respawnP.sprite.x + respawnP.width / 2 - player.width / 2;
-            player.y = respawnP.sprite.y - PLAYER_HEIGHT;
-        } else { player.x = 50; player.y = 100; }
+            player.y = respawnP.sprite.y - PLAYER_HEIGHT; // Reset to full height
+        } else { player.x = 50; player.y = 100; } // Fallback if no platforms
         player.vy = 0; player.isJumping = false; player.onGround = false; player.standingOnPlatform = null;
-        player.height = PLAYER_HEIGHT; player.isCrouching = false;
+        player.height = PLAYER_HEIGHT; player.isCrouching = false; // Ensure player is not crouching
     }
 
     if (lastPlatformRef.current && player.standingOnPlatform === lastPlatformRef.current && player.onGround && 
-        !newLevelRequestedRef.current && onRequestNewLevel) {
+        !newLevelRequestedRef.current && onRequestNewLevel && !isLoading) {
       if (winSoundRef.current) { winSoundRef.current.currentTime = 0; winSoundRef.current.play().catch(e => console.warn("Win sound err:", e)); }
       newLevelRequestedRef.current = true; 
       console.log(`GameScreen: Calling onRequestNewLevel() for level ${levelId}.`);
@@ -523,22 +549,28 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
         gameContainer.y += (targetY - gameContainer.y) * CAMERA_LERP_FACTOR;
     }
 
-  }, [parsedData, onRequestNewLevel, levelId]); 
+  }, [parsedData, onRequestNewLevel, levelId, isLoading]); 
 
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => keysPressedRef.current.add(event.code);
-    const handleKeyUp = (event: KeyboardEvent) => keysPressedRef.current.delete(event.code);
+    const handleKeyDown = (event: KeyboardEvent) => {
+        if (isFormPopoverOpen) return; // Ignore game controls if form is open
+        keysPressedRef.current.add(event.code);
+    }
+    const handleKeyUp = (event: KeyboardEvent) => {
+        if (isFormPopoverOpen) return;
+        keysPressedRef.current.delete(event.code);
+    }
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
 
     const app = pixiAppRef.current;
     if (app && app.ticker) {
       app.ticker.remove(gameLoop); 
-      if (!isLoading) { 
+      if (!isLoading && !isFormPopoverOpen) { 
         app.ticker.add(gameLoop);
-        console.log(`GameScreen: gameLoop added to ticker for levelId ${levelId}. isLoading: ${isLoading}`);
+        console.log(`GameScreen: gameLoop added to ticker for levelId ${levelId}. isLoading: ${isLoading}, isFormPopoverOpen: ${isFormPopoverOpen}`);
       } else {
-        console.log(`GameScreen: gameLoop NOT added to ticker for levelId ${levelId} (isLoading: ${isLoading}).`);
+        console.log(`GameScreen: gameLoop NOT added to ticker for levelId ${levelId} (isLoading: ${isLoading}, isFormPopoverOpen: ${isFormPopoverOpen}).`);
       }
     }
 
@@ -550,15 +582,39 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
         console.log(`GameScreen: gameLoop removed from ticker during cleanup for levelId ${levelId}.`);
       }
     };
-  }, [gameLoop, parsedData, levelId, isLoading]);
+  }, [gameLoop, parsedData, levelId, isLoading, isFormPopoverOpen]);
+
+  const handlePopoverFormSubmit = (data: GenerateLevelOutput) => {
+    onManualLevelGenerated(data);
+    setIsFormPopoverOpen(false); // Close popover on submit
+  };
 
 
   return (
     <Card className="border-primary shadow-lg bg-card/80 backdrop-blur-sm h-[400px] md:h-[500px] flex flex-col">
-      <CardHeader>
+      <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle className="text-primary uppercase text-xl tracking-wider">
-          Game Screen - Level {levelId != null && levelId > 0 ? levelId : 'Loading...'} - Deaths: {deathCount}
+          Level {levelId != null && levelId > 0 ? levelId : 'Loading...'} - Deaths: {deathCount}
         </CardTitle>
+        <Popover open={isFormPopoverOpen} onOpenChange={setIsFormPopoverOpen}>
+          <PopoverTrigger asChild>
+            <Button variant="ghost" size="icon" className="text-primary hover:text-primary/80">
+              <SlidersHorizontal className="h-5 w-5" />
+              <span className="sr-only">Level Generator</span>
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-80 z-50 bg-card border-accent shadow-lg p-0">
+             {/* Wrapping form in a div with padding, as PopoverContent p-0 is used for edge-to-edge styling */}
+            <div className="p-4">
+                <LevelGeneratorForm
+                    onLevelGenerated={handlePopoverFormSubmit}
+                    setIsLoadingLevel={setIsLoadingLevelFromForm}
+                    initialValues={defaultLevelParams}
+                    onFormSubmitted={() => setIsFormPopoverOpen(false)} // Add this to close on submit
+                />
+            </div>
+          </PopoverContent>
+        </Popover>
       </CardHeader>
       <CardContent className="flex-grow p-0 m-0 relative overflow-hidden">
         <div
