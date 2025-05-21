@@ -5,7 +5,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import type { GenerateLevelOutput, GenerateLevelInput } from '@/ai/flows/generate-level';
 import SiteHeader from '@/components/layout/SiteHeader';
 import GameScreen from '@/components/game/GameScreen';
-// ControlsGuide import removed
+// LevelPreview and ControlsGuide imports are already removed
 import { handleGenerateLevelAction } from '@/app/actions';
 import { useToast } from "@/hooks/use-toast";
 
@@ -37,7 +37,7 @@ export default function HomePage() {
           title: `Level ${nextLevelNumber} Generation Failed`,
           description: result.error || "An unknown error occurred.",
         });
-        setGeneratedLevel(null);
+        setGeneratedLevel(null); // Explicitly set to null on error
       } else {
         console.log(`HomePage: Level ${nextLevelNumber} generated successfully.`);
         setGeneratedLevel(result);
@@ -54,7 +54,7 @@ export default function HomePage() {
         title: "Error",
         description: `An unexpected error occurred while generating level ${nextLevelNumber}.`,
       });
-      setGeneratedLevel(null);
+      setGeneratedLevel(null); // Explicitly set to null on error
     } finally {
       setIsLoadingLevel(false);
     }
@@ -72,8 +72,8 @@ export default function HomePage() {
     const newLevelNumber = levelCount === 0 ? 1 : levelCount + 1;
     console.log(`HomePage: Manual generation for Level ${newLevelNumber}.`);
     setGeneratedLevel(data);
-    setLevelCount(newLevelNumber); 
-    setIsLoadingLevel(false); 
+    setLevelCount(newLevelNumber);
+    setIsLoadingLevel(false);
     toast({
       title: `Level ${newLevelNumber} Generated Manually!`,
       description: "The new level is ready for play.",
@@ -90,17 +90,14 @@ export default function HomePage() {
       <SiteHeader title="Shifting Pixel" />
       <div className="flex-grow container mx-auto px-2 py-4 md:px-4 md:py-8">
         <div className="flex flex-col lg:flex-row gap-6 md:gap-8">
-          {/* Left Column / Control Panel - Now empty or can be removed */}
-          <aside className="w-full lg:w-1/3 xl:w-1/4 space-y-6 md:space-y-8">
-            {/* ControlsGuide was here */}
-          </aside>
+          {/* The aside element previously here has been removed */}
 
-          {/* Right Column / Game Area */}
+          {/* Game Area */}
           <main className="flex-1 space-y-6 md:space-y-8">
             <GameScreen
               levelOutput={generatedLevel}
               onRequestNewLevel={handleRequestNewLevel}
-              levelId={levelCount} 
+              levelId={levelCount}
               isLoading={isLoadingLevel}
               onManualLevelGenerated={handleManualLevelGeneration}
               setIsLoadingLevelFromForm={setIsLoadingLevel}
