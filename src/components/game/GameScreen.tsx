@@ -634,7 +634,7 @@ const GameScreen: FC<GameScreenProps> = ({
   if (!gameStarted) {
     return (
       <Card className="border-primary shadow-lg bg-card/80 backdrop-blur-sm flex-grow flex flex-col items-center justify-center p-6 text-center">
-        <h1 className="text-5xl font-bold text-primary uppercase tracking-widest mb-6 md:mb-10" style={{ fontFamily: 'var(--font-press-start-2p)' }}>
+        <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-primary uppercase tracking-widest mb-8">
           Shifting Pixel
         </h1>
         <div className="w-full max-w-xs flex flex-col gap-6 items-center">
@@ -664,7 +664,7 @@ const GameScreen: FC<GameScreenProps> = ({
             Start Game
           </Button>
         </div>
-        <div className="mt-auto pt-8 text-xs text-muted-foreground">
+        <div className="pt-8 text-xs text-muted-foreground">
           <p className="mb-1">Controls: A/D or ←/→ (Move), W/↑/Space (Jump), S/↓ (Crouch)</p>
           <p>&copy; {new Date().getFullYear()} Shifting Pixel. All Labyrinths Reserved.</p>
         </div>
@@ -747,5 +747,4 @@ const GameScreen: FC<GameScreenProps> = ({
 };
 
 export default GameScreen;
-
     
