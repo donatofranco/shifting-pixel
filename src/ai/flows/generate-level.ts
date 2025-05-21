@@ -55,7 +55,7 @@ const generateLevelPrompt = ai.definePrompt({
   1.  **Solvability is Paramount**: Ensure there is always a clear and traversable path from the first platform to the very last platform. Every jump must be possible. Test this mentally.
   2.  **Platform Placement - Dynamic and Unpredictable**:
       *   **Randomized Layouts**: Strive for a high degree of randomness and unpredictability in the overall platform layout. Avoid overly linear or repetitive patterns.
-      *   **Varied Gaps & Heights**: While respecting the player's jump capabilities (max height ~80-85, max horizontal ~100-120), explore varied and surprising vertical and horizontal distances between platforms. Create a mix of easier and more challenging (but always solvable) jumps. Don't be afraid to use the full extent of the player's jump abilities to create dynamic ascents, descents, and traverses. Think about how the player might need to combine jumps or use momentum.
+      *   **Varied Gaps & Heights with Wider Horizontal Tendency**: While respecting the player's jump capabilities (max height ~80-85, max horizontal ~100-120), explore varied and surprising vertical and horizontal distances between platforms. Aim for somewhat wider average horizontal gaps to create more challenging horizontal jumps. Create a mix of easier and more challenging jumps, including those that test the player's maximum horizontal reach, but always ensure a safe landing and solvability. Don't be afraid to use the full extent of the player's jump abilities to create dynamic ascents, descents, and traverses. Think about how the player might need to combine jumps or use momentum.
       *   **Starting Platform**: The first platform MUST be of type "standard" and placed at a reasonable starting height (e.g., y: 100-150 from the top, assuming y increases downwards) and position (e.g. x:0).
       *   **Ending Platform**: The final platform in the sequence (rightmost) MUST also be of type "standard" and be safely reachable.
   3.  **Platform Types - Creative Combinations**:
@@ -77,18 +77,18 @@ const generateLevelPrompt = ai.definePrompt({
   {
     "platforms": [
       {"x": 0, "y": 120, "width": 60, "type": "standard"},
-      {"x": 80, "y": 100, "width": 40, "type": "mobile"},
-      {"x": 50, "y": 150, "width": 40, "type": "vertical_mobile"},
-      {"x": 150, "y": 180, "width": 50, "type": "timed"},
-      {"x": 220, "y": 150, "width": 70, "type": "breakable"},
-      {"x": 300, "y": 130, "width": 50, "type": "standard"}
+      {"x": 100, "y": 100, "width": 40, "type": "mobile"},
+      {"x": 80, "y": 150, "width": 40, "type": "vertical_mobile"},
+      {"x": 180, "y": 180, "width": 50, "type": "timed"},
+      {"x": 250, "y": 150, "width": 70, "type": "breakable"},
+      {"x": 330, "y": 130, "width": 50, "type": "standard"}
     ],
     "obstacles": [
-      {"type": "spikes", "x": 100, "y": 170, "width": 30, "height": 10},
-      {"type": "enemy", "x": 250, "y": 135, "width": 15, "height": 15}
+      {"type": "spikes", "x": 120, "y": 170, "width": 30, "height": 10},
+      {"type": "enemy", "x": 280, "y": 135, "width": 15, "height": 15}
     ]
   }
-  Remember, the "obstacles" array is optional and might be empty, especially for lower obstacle densities. Focus on creative, solvable, and somewhat unpredictable platform arrangements.
+  Remember, the "obstacles" array is optional and might be empty, especially for lower obstacle densities. Focus on creative, solvable, and somewhat unpredictable platform arrangements with a tendency towards challenging horizontal jumps.
   `,
 });
 
