@@ -1,9 +1,10 @@
+
 // @ts-nocheck
 // TODO: Fix TS errors
 "use client";
 
 import type { FC } from 'react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -34,7 +35,7 @@ import { useToast } from "@/hooks/use-toast";
 
 const formSchema = z.object({
   difficulty: z.enum(['easy', 'medium', 'hard']),
-  levelLength: z.coerce.number().int().min(50).max(200),
+  levelLength: z.coerce.number().int().min(10).max(200), // Adjusted min for shorter levels
   platformDensity: z.enum(['sparse', 'normal', 'dense']),
   obstacleDensity: z.enum(['low', 'medium', 'high']),
 });
@@ -44,15 +45,16 @@ type LevelGeneratorFormValues = z.infer<typeof formSchema>;
 interface LevelGeneratorFormProps {
   onLevelGenerated: (data: GenerateLevelOutput) => void;
   setIsLoadingLevel: (isLoading: boolean) => void;
+  initialValues?: GenerateLevelInput;
 }
 
-const LevelGeneratorForm: FC<LevelGeneratorFormProps> = ({ onLevelGenerated, setIsLoadingLevel }) => {
+const LevelGeneratorForm: FC<LevelGeneratorFormProps> = ({ onLevelGenerated, setIsLoadingLevel, initialValues }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
 
   const form = useForm<LevelGeneratorFormValues>({
     resolver: zodResolver(formSchema),
-    defaultValues: {
+    defaultValues: initialValues || {
       difficulty: 'medium',
       levelLength: 100,
       platformDensity: 'normal',
@@ -60,10 +62,18 @@ const LevelGeneratorForm: FC<LevelGeneratorFormProps> = ({ onLevelGenerated, set
     },
   });
 
+  useEffect(() => {
+    if (initialValues) {
+      form.reset(initialValues);
+    }
+  }, [initialValues, form]);
+
   const onSubmit: SubmitHandler<LevelGeneratorFormValues> = async (values) => {
     setIsSubmitting(true);
     setIsLoadingLevel(true);
     try {
+      // Explicitly cast values to GenerateLevelInput.
+      // This assumes LevelGeneratorFormValues is structurally compatible with GenerateLevelInput.
       const result = await handleGenerateLevelAction(values as GenerateLevelInput);
       if ('error' in result) {
         console.error("Generation error:", result.error);
@@ -75,7 +85,7 @@ const LevelGeneratorForm: FC<LevelGeneratorFormProps> = ({ onLevelGenerated, set
       } else {
         onLevelGenerated(result);
         toast({
-          title: "Level Generated!",
+          title: "Level Generated Manually!",
           description: "The new level is ready for preview.",
         });
       }
@@ -133,7 +143,7 @@ const LevelGeneratorForm: FC<LevelGeneratorFormProps> = ({ onLevelGenerated, set
                     <Input type="number" {...field} className="bg-input border-border focus:ring-ring" />
                   </FormControl>
                   <FormDescription className="text-muted-foreground">
-                    Number of platforms (50-200)
+                    Number of platforms (10-200)
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -189,10 +199,10 @@ const LevelGeneratorForm: FC<LevelGeneratorFormProps> = ({ onLevelGenerated, set
               {isSubmitting ? (
                 <>
                   <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                  Generating...
+                  Generating Manually...
                 </>
               ) : (
-                'Generate Level'
+                'Generate Manually'
               )}
             </Button>
           </form>

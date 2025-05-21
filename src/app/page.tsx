@@ -1,20 +1,75 @@
+
 "use client";
 
-import { useState } from 'react';
-import type { GenerateLevelOutput } from '@/ai/flows/generate-level';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import type { GenerateLevelOutput, GenerateLevelInput } from '@/ai/flows/generate-level';
 import SiteHeader from '@/components/layout/SiteHeader';
 import LevelGeneratorForm from '@/components/game/LevelGeneratorForm';
 import GameScreen from '@/components/game/GameScreen';
 import LevelPreview from '@/components/game/LevelPreview';
 import ControlsGuide from '@/components/game/ControlsGuide';
+import { handleGenerateLevelAction } from '@/app/actions';
+import { useToast } from "@/hooks/use-toast";
+
+const DEFAULT_LEVEL_PARAMS: GenerateLevelInput = {
+  difficulty: 'medium',
+  levelLength: 70, // Shorter for quicker testing of end-level trigger
+  platformDensity: 'normal',
+  obstacleDensity: 'medium',
+};
 
 export default function HomePage() {
   const [generatedLevel, setGeneratedLevel] = useState<GenerateLevelOutput | null>(null);
   const [isLoadingLevel, setIsLoadingLevel] = useState<boolean>(false);
+  const { toast } = useToast();
+  const initialLevelGeneratedRef = useRef(false);
 
-  const handleLevelGenerated = (data: GenerateLevelOutput) => {
+  const triggerLevelGeneration = useCallback(async (params: GenerateLevelInput) => {
+    setIsLoadingLevel(true);
+    try {
+      const result = await handleGenerateLevelAction(params);
+      if ('error' in result) {
+        console.error("Generation error:", result.error);
+        toast({
+          variant: "destructive",
+          title: "Level Generation Failed",
+          description: result.error || "An unknown error occurred.",
+        });
+        setGeneratedLevel(null); // Clear previous level on error
+      } else {
+        setGeneratedLevel(result);
+        toast({
+          title: "New Level Generated!",
+          description: "The adventure continues.",
+        });
+      }
+    } catch (error) {
+      console.error("Unexpected error generating level:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "An unexpected error occurred while generating the level.",
+      });
+      setGeneratedLevel(null);
+    } finally {
+      setIsLoadingLevel(false);
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    if (!initialLevelGeneratedRef.current) {
+      initialLevelGeneratedRef.current = true;
+      triggerLevelGeneration(DEFAULT_LEVEL_PARAMS);
+    }
+  }, [triggerLevelGeneration]);
+
+  const handleManualLevelGeneration = (data: GenerateLevelOutput) => {
     setGeneratedLevel(data);
   };
+
+  const handleRequestNewLevel = useCallback(() => {
+    triggerLevelGeneration(DEFAULT_LEVEL_PARAMS);
+  }, [triggerLevelGeneration]);
 
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground selection:bg-primary selection:text-primary-foreground">
@@ -23,16 +78,17 @@ export default function HomePage() {
         <div className="flex flex-col lg:flex-row gap-6 md:gap-8">
           {/* Left Column / Control Panel */}
           <aside className="w-full lg:w-1/3 xl:w-1/4 space-y-6 md:space-y-8">
-            <LevelGeneratorForm 
-              onLevelGenerated={handleLevelGenerated}
+            <LevelGeneratorForm
+              onLevelGenerated={handleManualLevelGeneration}
               setIsLoadingLevel={setIsLoadingLevel}
+              initialValues={DEFAULT_LEVEL_PARAMS}
             />
             <ControlsGuide />
           </aside>
 
           {/* Right Column / Game Area */}
           <main className="flex-1 space-y-6 md:space-y-8">
-            <GameScreen levelOutput={generatedLevel} />
+            <GameScreen levelOutput={generatedLevel} onRequestNewLevel={handleRequestNewLevel} />
             <LevelPreview levelOutput={generatedLevel} isLoading={isLoadingLevel} />
           </main>
         </div>
