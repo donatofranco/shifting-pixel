@@ -19,7 +19,7 @@ const parseLevelData = (levelDataString: string | undefined): ParsedLevelData | 
   try {
     const data = JSON.parse(levelDataString);
     if (!data.platforms || !Array.isArray(data.platforms)) data.platforms = [];
-    // Obstacles are not rendered, so no need to parse them here if not used
+    // Obstacles are not rendered, so no need to parse them here
     return data as ParsedLevelData;
   } catch (error) {
     console.error("Failed to parse level data for GameScreen:", error);
@@ -102,7 +102,8 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
 
   const platformObjectsRef = useRef<PlatformObject[]>([]);
   const keysPressedRef = useRef<Set<string>>(new Set());
-  const levelEndXRef = useRef<number>(0);
+  const levelEndXRef = useRef<number>(0); // Still useful for general world boundary
+  const lastPlatformRef = useRef<PlatformObject | null>(null); // Reference to the actual last platform object
   const newLevelRequestedRef = useRef<boolean>(false);
   const prevLevelIdRef = useRef<number | undefined>();
 
@@ -118,9 +119,6 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
 
   useEffect(() => {
     console.log(`GameScreen: useEffect for levelId. Current levelId: ${levelId}, prevLevelIdRef: ${prevLevelIdRef.current}`);
-    // Reset the request flag when the levelId changes AND it's a different level.
-    // levelId 0 means no level generated yet by HomePage's counter.
-    // levelId 1 means first level.
     if (levelId !== undefined && levelId > 0 && prevLevelIdRef.current !== levelId) {
       newLevelRequestedRef.current = false;
       console.log(`GameScreen: New level detected (ID: ${levelId} from prev ${prevLevelIdRef.current}). newLevelRequestedRef reset to false.`);
@@ -162,8 +160,9 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
         pixiAppRef.current.destroy(true, { children: true, texture: true, baseTexture: true });
         pixiAppRef.current = null;
         gameContainerRef.current = null;
-        playerRef.current = null; // Also clear playerRef on destroy
+        playerRef.current = null;
         platformObjectsRef.current = [];
+        lastPlatformRef.current = null;
       }
     };
   }, []);
@@ -176,20 +175,22 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
     if (app && gameContainer && pixiContainerRef.current) {
       gameContainer.removeChildren();
       platformObjectsRef.current = [];
-      // newLevelRequestedRef is reset by levelId change effect
+      lastPlatformRef.current = null; // Reset last platform for the new level
 
       if (parsedData && parsedData.platforms.length > 0) {
         console.log(`GameScreen: Building level ${levelId} with ${parsedData.platforms.length} platforms.`);
-        const elementsToBound = [...(parsedData.platforms || [])];
-        let worldMinX = 0, worldMaxX = 300, worldMinY = 0, worldMaxY = 150;
+        
+        let worldMinX = Infinity, worldMaxX = -Infinity, worldMinY = Infinity, worldMaxY = -Infinity;
 
-        if (elementsToBound.length > 0) {
-            worldMinX = Math.min(...elementsToBound.map(e => e.x));
-            worldMaxX = Math.max(...elementsToBound.map(e => e.x + (e.width || 0))); // Use e.width, fallback to 0 if undefined
-            worldMinY = Math.min(...elementsToBound.map(e => e.y));
-            worldMaxY = Math.max(...elementsToBound.map(e => e.y + DEFAULT_PLATFORM_HEIGHT));
+        if (parsedData.platforms.length > 0) {
+            worldMinX = Math.min(...parsedData.platforms.map(e => e.x));
+            worldMaxX = Math.max(...parsedData.platforms.map(e => e.x + (e.width || 0)));
+            worldMinY = Math.min(...parsedData.platforms.map(e => e.y));
+            worldMaxY = Math.max(...parsedData.platforms.map(e => e.y + DEFAULT_PLATFORM_HEIGHT));
+        } else { // Fallback if no platforms, though this case means parsedData.platforms.length is 0
+            worldMinX = 0; worldMaxX = 300; worldMinY = 0; worldMaxY = 150;
         }
-        levelEndXRef.current = worldMaxX;
+        levelEndXRef.current = worldMaxX; // This still represents the furthest X point of any platform
         console.log(`GameScreen: Level ${levelId} bounds calculated. MinX: ${worldMinX}, MaxX: ${worldMaxX} (levelEndXRef: ${levelEndXRef.current})`);
 
 
@@ -217,7 +218,7 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
         gameContainer.x = (viewWidth - scaledWorldWidth) / 2 - (worldMinX * scale);
         gameContainer.y = (viewHeight - scaledWorldHeight) / 2 - (worldMinY * scale);
 
-        (parsedData.platforms || []).forEach((platformData: PlatformData) => {
+        parsedData.platforms.forEach((platformData: PlatformData) => {
           const pSprite = new PIXI.Graphics();
           let platformColor = PLATFORM_COLOR_STANDARD;
           switch(platformData.type) {
@@ -264,11 +265,29 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
           platformObjectsRef.current.push(platformObj);
         });
 
+        // Identify the last platform
+        if (platformObjectsRef.current.length > 0) {
+            let rightmostPlatformCandidate: PlatformObject | null = null;
+            let maxRightEdgeCoord = -Infinity;
+
+            platformObjectsRef.current.forEach(pObj => {
+                const rightEdge = pObj.initialX + pObj.width;
+                if (rightEdge > maxRightEdgeCoord) {
+                    maxRightEdgeCoord = rightEdge;
+                    rightmostPlatformCandidate = pObj;
+                }
+            });
+            lastPlatformRef.current = rightmostPlatformCandidate;
+            if (lastPlatformRef.current) {
+                console.log(`GameScreen: Last platform for level ${levelId} identified: X=${lastPlatformRef.current.initialX}, W=${lastPlatformRef.current.width}, Type=${lastPlatformRef.current.type}`);
+            }
+        }
+
 
         if (!playerRef.current) {
             const playerSprite = new PIXI.Graphics();
-            let startX = worldMinX + PLAYER_WIDTH; // Default start X
-            let startY = worldMaxY - PLAYER_HEIGHT - DEFAULT_PLATFORM_HEIGHT; // Default start Y
+            let startX = worldMinX + PLAYER_WIDTH; 
+            let startY = worldMaxY - PLAYER_HEIGHT - DEFAULT_PLATFORM_HEIGHT; 
             if (platformObjectsRef.current.length > 0) {
                 const firstPlatform = platformObjectsRef.current.find(p => p.type === 'standard' || !p.type) || platformObjectsRef.current[0];
                 startX = firstPlatform.sprite.x + firstPlatform.width / 2 - PLAYER_WIDTH / 2;
@@ -292,12 +311,12 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
             playerSprite.x = playerRef.current.x;
             playerSprite.y = playerRef.current.y;
             gameContainer.addChild(playerSprite);
-        } else { // Reset player position if it exists
+        } else { 
              if (platformObjectsRef.current.length > 0) {
                 const firstPlatform = platformObjectsRef.current.find(p => p.type === 'standard' || !p.type) || platformObjectsRef.current[0];
                 playerRef.current.x = firstPlatform.sprite.x + firstPlatform.width / 2 - playerRef.current.width / 2;
                 playerRef.current.y = firstPlatform.sprite.y - playerRef.current.height;
-            } else { // Default spawn if no platforms
+            } else { 
                 playerRef.current.x = (gameContainer?.width / (gameContainer?.scale.x || 1) / 2) - playerRef.current.width / 2 || 50;
                 playerRef.current.y = (gameContainer?.height / (gameContainer?.scale.y || 1) ) - playerRef.current.height - 50 || 100;
             }
@@ -314,20 +333,15 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
                  gameContainer.addChild(playerRef.current.sprite);
             }
         }
-      } else { // parsedData is null or no platforms
+      } else { 
         console.log(`GameScreen: No parsed data or no platforms for level ${levelId}. Clearing platforms and hiding player if exists.`);
-        if (playerRef.current && gameContainer.children.includes(playerRef.current.sprite)) {
-            // Don't remove player sprite, just hide it or reset position.
-            // For now, let's assume if no platforms, player is off-screen or game is paused.
-            // gameContainer.removeChild(playerRef.current.sprite); // This might cause issues if playerRef is not nulled.
-        }
-        // playerRef.current = null; // Don't null playerRef here if we want to reuse it.
         platformObjectsRef.current = [];
+        lastPlatformRef.current = null;
         levelEndXRef.current = 0;
         console.log(`GameScreen: levelEndXRef set to 0 for level ${levelId}`);
       }
     }
-  }, [parsedData, pixiAppRef.current?.renderer?.width, pixiAppRef.current?.renderer?.height, levelId]); // Added levelId dependency
+  }, [parsedData, pixiAppRef.current?.renderer?.width, pixiAppRef.current?.renderer?.height, levelId]); 
 
 
   const gameLoop = useCallback((delta: PIXI.TickerCallback<any>) => {
@@ -406,8 +420,8 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
           if (pObj.respawnTimer <= 0) {
             pObj.isBroken = false;
             pObj.sprite.visible = true;
-            pObj.isBreaking = false; // Reset isBreaking
-            pObj.breakingTimer = 0; // Reset breakingTimer
+            pObj.isBreaking = false; 
+            pObj.breakingTimer = 0; 
           }
         }
       }
@@ -467,7 +481,7 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
 
     for (const pObj of collidablePlatforms) {
         const platformRect = { x: pObj.sprite.x, y: pObj.sprite.y, width: pObj.width, height: pObj.height };
-        const playerRect = { x: player.x, y: prevPlayerY, width: player.width, height: player.height }; // Use prevPlayerY for horizontal collision check
+        const playerRect = { x: player.x, y: prevPlayerY, width: player.width, height: player.height }; 
         if (checkCollision(playerRect, platformRect)) {
             if (player.vx > 0) player.x = platformRect.x - player.width;
             else if (player.vx < 0) player.x = platformRect.x + platformRect.width;
@@ -479,9 +493,8 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
         const platformRect = { x: pObj.sprite.x, y: pObj.sprite.y, width: pObj.width, height: pObj.height };
         const playerRectForVerticalCheck = { x: player.x, y: player.y, width: player.width, height: player.height };
         if (checkCollision(playerRectForVerticalCheck, platformRect)) {
-            if (player.vy > 0) { // Player is falling
-                // Check if player's feet were above or at the platform's top edge in the previous frame
-                if (prevPlayerY + player.height <= platformRect.y + 1) { // Small tolerance
+            if (player.vy > 0) { 
+                if (prevPlayerY + player.height <= platformRect.y + 1) { 
                     player.y = platformRect.y - player.height;
                     player.vy = 0;
                     player.isJumping = false;
@@ -492,28 +505,25 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
                         pObj.breakingTimer = BREAKABLE_PLATFORM_BREAK_DELAY;
                     }
                 }
-            } else if (player.vy < 0) { // Player is jumping up
-                 // Check if player's head was below or at the platform's bottom edge in the previous frame
-                if (prevPlayerY >= platformRect.y + platformRect.height -1 ) { // Small tolerance
+            } else if (player.vy < 0) { 
+                if (prevPlayerY >= platformRect.y + platformRect.height -1 ) { 
                     player.y = platformRect.y + platformRect.height;
-                    player.vy = 0; // Stop upward movement
+                    player.vy = 0; 
                 }
             }
         }
     }
     
-    // If player was on a platform but now isn't colliding with it in the Y-axis, check if they walked off
     if (!player.onGround && player.standingOnPlatform) {
         let stillOnValidPlatform = false;
         const p = player.standingOnPlatform;
-        // Check if the platform is still valid and if the player is still horizontally aligned and vertically close
         if (!((p.type === 'timed' && !p.isVisible) || (p.type === 'breakable' && p.isBroken))) {
              const platformRect = { x: p.sprite.x, y: p.sprite.y, width: p.width, height: p.height };
              const playerFeetY = player.y + player.height;
              if (player.x + player.width > platformRect.x &&
                  player.x < platformRect.x + platformRect.width &&
-                 playerFeetY >= platformRect.y && playerFeetY < platformRect.y + Math.abs(player.vy) + GRAVITY + 1) { // Small tolerance for Y
-                 player.y = platformRect.y - player.height; // Snap to platform
+                 playerFeetY >= platformRect.y && playerFeetY < platformRect.y + Math.abs(player.vy) + GRAVITY + 1) { 
+                 player.y = platformRect.y - player.height; 
                  player.vy = 0;
                  player.isJumping = false;
                  player.onGround = true;
@@ -521,7 +531,7 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
              }
         }
         if (!stillOnValidPlatform) {
-            player.standingOnPlatform = null; // No longer on this platform
+            player.standingOnPlatform = null; 
         }
     }
 
@@ -531,39 +541,40 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
     player.sprite.clear();
     player.sprite.rect(0, 0, player.width, player.height).fill(PLAYER_COLOR);
 
-    let gameWorldMaxY = 150; // Default
+    let gameWorldMaxY = 150; 
     if (parsedData && parsedData.platforms.length > 0) {
          gameWorldMaxY = Math.max(...parsedData.platforms.map(p => p.y + DEFAULT_PLATFORM_HEIGHT));
     } else if (gameContainerRef.current && (gameContainerRef.current.scale.y || 1) > 0) {
         gameWorldMaxY = (gameContainerRef.current.height / (gameContainerRef.current.scale.y || 1)) - PLAYER_HEIGHT - 50;
     }
-    const fallBoundary = gameWorldMaxY + 100; // A bit below the lowest platform
-    if (player.y > fallBoundary) { // Player fell off
+    const fallBoundary = gameWorldMaxY + 100; 
+    if (player.y > fallBoundary) { 
         console.log(`GameScreen: Player fell off map for level ${levelId}. Respawning.`);
         if (platformObjectsRef.current.length > 0) {
             const respawnPlatform = platformObjectsRef.current.find(p => p.type === 'standard' || !p.type) || platformObjectsRef.current[0];
             player.x = respawnPlatform.sprite.x + respawnPlatform.width / 2 - player.width / 2;
             player.y = respawnPlatform.sprite.y - player.height;
         } else {
-             player.x = 50; player.y = 100; // Absolute fallback
+             player.x = 50; player.y = 100; 
         }
         player.vy = 0;
         player.isJumping = false;
-        player.onGround = false; // Will be set true on next collision if applicable
+        player.onGround = false; 
         player.standingOnPlatform = null;
     }
 
-    if (levelEndXRef.current > 0 && player.x + player.width > levelEndXRef.current) {
-        console.log(`GameScreen: Player reached end of level ${levelId}. Player X: ${player.x + player.width}, Level End X: ${levelEndXRef.current}. newLevelRequestedRef: ${newLevelRequestedRef.current}`);
-        if (onRequestNewLevel && !newLevelRequestedRef.current) {
-            console.log(`GameScreen: Calling onRequestNewLevel() for level ${levelId}. Setting newLevelRequestedRef to true.`);
-            newLevelRequestedRef.current = true;
-            onRequestNewLevel();
-        } else if (newLevelRequestedRef.current) {
-            // console.log(`GameScreen: Player at end of level ${levelId}, but newLevelRequestedRef is true. Not calling.`);
-        }
+    // New level completion condition
+    if (lastPlatformRef.current &&
+        player.standingOnPlatform === lastPlatformRef.current &&
+        player.onGround && // Double check player is grounded on it
+        !newLevelRequestedRef.current &&
+        onRequestNewLevel) {
+      console.log(`GameScreen: Player is ON the last platform of level ${levelId}. Platform Type: ${lastPlatformRef.current.type}. newLevelRequestedRef: ${newLevelRequestedRef.current}`);
+      newLevelRequestedRef.current = true;
+      console.log(`GameScreen: Calling onRequestNewLevel() for level ${levelId} because player is on the last platform.`);
+      onRequestNewLevel();
     }
-  }, [parsedData, onRequestNewLevel, levelId]); // Added levelId to gameLoop dependencies
+  }, [parsedData, onRequestNewLevel, levelId]); 
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => keysPressedRef.current.add(event.code);
@@ -577,7 +588,7 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
       app.ticker.remove(gameLoop); 
       app.ticker.add(gameLoop);
     }
-    console.log(`GameScreen: gameLoop (re)added to ticker for levelId ${levelId}. Dependencies: parsedData changed: ${!!parsedData}, onRequestNewLevel changed: ${!!onRequestNewLevel}`);
+    console.log(`GameScreen: gameLoop (re)added to ticker for levelId ${levelId}.`);
 
 
     return () => {
@@ -587,13 +598,13 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
         app.ticker.remove(gameLoop);
       }
     };
-  }, [gameLoop, parsedData, levelId]); // Added levelId here too, to ensure ticker is updated if gameLoop depends on it.
+  }, [gameLoop, parsedData, levelId]); 
 
 
   return (
     <Card className="border-primary shadow-lg bg-card/80 backdrop-blur-sm h-[400px] md:h-[500px] flex flex-col">
       <CardHeader>
-        <CardTitle className="text-primary uppercase text-xl tracking-wider">Game Screen - Level {levelId > 0 ? levelId : 'Loading...'}</CardTitle>
+        <CardTitle className="text-primary uppercase text-xl tracking-wider">Game Screen - Level {levelId != null && levelId > 0 ? levelId : 'Loading...'}</CardTitle>
       </CardHeader>
       <CardContent className="flex-grow p-0 m-0 relative overflow-hidden">
         <div
@@ -608,3 +619,6 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
 };
 
 export default GameScreen;
+
+
+    
