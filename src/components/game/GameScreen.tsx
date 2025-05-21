@@ -479,7 +479,7 @@ const GameScreen: FC<GameScreenProps> = ({ levelOutput, onRequestNewLevel, level
     }
 
     const collidablePlatforms = platformObjectsRef.current.filter(p => {
-      if (p.type === 'breakable' && (p.isBroken || (p.isBreaking && p.breakingTimer !== undefined && pObj.breakingTimer <=0))) return false;
+      if (p.type === 'breakable' && (p.isBroken || (p.isBreaking && p.breakingTimer !== undefined && p.breakingTimer <=0))) return false;
       if (p.type === 'timed' && !p.isVisible) return false;
       return true;
     });
@@ -665,3 +665,4 @@ export default GameScreen;
     
 
     
+
