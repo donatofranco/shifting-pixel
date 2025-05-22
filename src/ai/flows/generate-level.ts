@@ -62,7 +62,12 @@ const generateLevelPrompt = ai.definePrompt({
       *   Incorporate a variety of platform types: 'standard', 'mobile' (moves horizontally), 'vertical_mobile' (moves vertically), 'timed', 'breakable'.
       *   Distribute these types thoughtfully AND with an element of surprise to create interesting, varied, and sometimes unexpected challenges. Avoid long sequences of the same platform type unless it serves a specific, compelling design purpose. Consider how different platform types can interact with each other or require different player skills.
       *   For 'mobile' and 'vertical_mobile' platforms, the game will assign a default movement range and speed. You only need to specify the type.
-  4.  **Obstacles (Optional, consider placement if generated)**:
+  4.  **Platform Patterns - Structured Sequences**:
+      *   In addition to random placement, consider incorporating distinct platform patterns to add structure and variety. These patterns should be interspersed with more random platform placements.
+      *   For example, you could generate sequences of 'ascending stairs' (platforms gradually increasing in Y and X, forming a climbable staircase) or 'descending stairs'. Each step in a stair pattern should be a manageable jump.
+      *   These patterns should serve as interesting segments within a generally unpredictable level, not dominate the entire design.
+      *   Even when generating patterns like stairs, ensure each step and the transition into and out of the pattern is solvable and fits the player's jump capabilities.
+  5.  **Obstacles (Optional, consider placement if generated)**:
       *   If you include obstacles like 'spikes' or 'enemy', they should have 'width' and 'height' properties.
       *   Place obstacles thoughtfully. They should increase difficulty but not make the level unsolvable or overly frustrating. Avoid placing obstacles directly on critical jump paths without alternatives. Consider placing them in less obvious spots if the obstacle density allows for it.
 
@@ -90,7 +95,7 @@ const generateLevelPrompt = ai.definePrompt({
       {"type": "enemy", "x": 280, "y": 135, "width": 15, "height": 15}
     ]
   }
-  Remember, the "obstacles" array is optional and might be empty, especially for lower obstacle densities. Focus on creative, solvable, and somewhat unpredictable platform arrangements with a tendency towards challenging horizontal jumps.
+  Remember, the "obstacles" array is optional and might be empty, especially for lower obstacle densities. Focus on creative, solvable, and somewhat unpredictable platform arrangements with a tendency towards challenging horizontal jumps and the occasional structured pattern like stairs.
   Your output must be ONLY the JSON string.
   `,
 });
