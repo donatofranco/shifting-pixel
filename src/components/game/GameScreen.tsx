@@ -9,7 +9,7 @@ import type { ParsedLevelData, Platform as PlatformData } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from '@/components/ui/dialog';
-import { Loader2, TimerIcon, PauseIcon, PlayIcon } from 'lucide-react';
+import { Loader2, TimerIcon, PauseIcon, PlayIcon, Gamepad2, SlidersHorizontal } from 'lucide-react';
 import LevelGeneratorForm from '@/components/game/LevelGeneratorForm';
 import ControlsGuide from '@/components/game/ControlsGuide';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -35,7 +35,7 @@ const parseLevelData = (levelDataString: string | undefined): ParsedLevelData | 
     if (!trimmedData) return null; // Handle case where trim results in empty string
     const data = JSON.parse(trimmedData);
     if (!data.platforms || !Array.isArray(data.platforms)) data.platforms = [];
-    data.obstacles = []; 
+    data.obstacles = [];
     return data as ParsedLevelData;
   } catch (error) {
     console.error("Failed to parse level data for GameScreen:", error, "Data string:", levelDataString);
@@ -51,20 +51,20 @@ const JUMP_FORCE = 7;
 const GRAVITY = 0.3;
 const DEFAULT_PLATFORM_HEIGHT = 10;
 
-const PLATFORM_COLOR_STANDARD = 0x9400D3; 
-const PLATFORM_COLOR_MOBILE = 0x0077FF; 
-const PLATFORM_COLOR_VERTICAL_MOBILE = 0x00D377; 
-const PLATFORM_COLOR_TIMED = 0xFF8C00; 
-const PLATFORM_COLOR_BREAKABLE = 0x8B4513; 
+const PLATFORM_COLOR_STANDARD = 0x9400D3;
+const PLATFORM_COLOR_MOBILE = 0x0077FF;
+const PLATFORM_COLOR_VERTICAL_MOBILE = 0x00D377;
+const PLATFORM_COLOR_TIMED = 0xFF8C00;
+const PLATFORM_COLOR_BREAKABLE = 0x8B4513;
 
-const PLAYER_COLOR = 0xFFDE00; 
+const PLAYER_COLOR = 0xFFDE00;
 
 const DEFAULT_PLATFORM_MOVE_SPEED = 0.5;
 const DEFAULT_PLATFORM_MOVE_RANGE = 50;
-const TIMED_PLATFORM_VISIBLE_DURATION = 3 * 60; 
-const TIMED_PLATFORM_HIDDEN_DURATION = 2 * 60;  
-const BREAKABLE_PLATFORM_BREAK_DELAY = 0.5 * 60; 
-const BREAKABLE_PLATFORM_RESPAWN_DURATION = 5 * 60; 
+const TIMED_PLATFORM_VISIBLE_DURATION = 3 * 60;
+const TIMED_PLATFORM_HIDDEN_DURATION = 2 * 60;
+const BREAKABLE_PLATFORM_BREAK_DELAY = 0.5 * 60;
+const BREAKABLE_PLATFORM_RESPAWN_DURATION = 5 * 60;
 
 const CAMERA_LERP_FACTOR = 0.1;
 const DESIRED_GAME_SCALE = 2.5;
@@ -168,12 +168,13 @@ const GameScreen: FC<GameScreenProps> = ({
         newLevelRequestedRef.current = false;
     }
 
-    if (levelId > 0) { 
+    if (levelId > 0) {
         setElapsedTime(0);
-        levelStartTimeRef.current = Date.now(); 
-    } else if (levelId === 0 && gameStarted) {
+        levelStartTimeRef.current = Date.now();
+    } else if (levelId === 0 && gameStarted) { // Signifies start of a manual reset or new game
         setElapsedTime(0);
-        levelStartTimeRef.current = null; 
+        setDeathCount(0); // Reset death count here
+        levelStartTimeRef.current = null;
     }
 
     prevLevelIdRef.current = levelId;
@@ -197,7 +198,7 @@ const GameScreen: FC<GameScreenProps> = ({
       return;
     }
 
-    if (pixiAppRef.current) return; 
+    if (pixiAppRef.current) return;
 
     if (PIXI.TextureSource && PIXI.SCALE_MODES) {
         PIXI.TextureSource.defaultOptions.scaleMode = PIXI.SCALE_MODES.NEAREST;
@@ -231,10 +232,10 @@ const GameScreen: FC<GameScreenProps> = ({
       console.log("GameScreen: Audio objects created.");
 
 
-      if (levelId > 0) { 
+      if (levelId > 0) {
         levelStartTimeRef.current = Date.now();
       } else {
-        levelStartTimeRef.current = null; 
+        levelStartTimeRef.current = null;
       }
     })();
 
@@ -326,6 +327,7 @@ const GameScreen: FC<GameScreenProps> = ({
                 }
             });
             lastPlatformRef.current = rightmostPlatformCandidate;
+            console.log("GameScreen: Last platform identified:", lastPlatformRef.current ? `Type: ${lastPlatformRef.current.type} at X:${lastPlatformRef.current.initialX}` : "None");
         }
 
         if (!playerRef.current) {
@@ -385,14 +387,14 @@ const GameScreen: FC<GameScreenProps> = ({
     const gameContainer = gameContainerRef.current;
 
     if (!gameStarted || !player || !app || !gameContainer || isLoading || isPaused ) return;
-    
+
     if (!parsedData || parsedData.platforms.length === 0) {
         if (player.sprite) player.sprite.visible = false;
         return;
     }
     if (player.sprite) player.sprite.visible = true;
 
-    if (levelStartTimeRef.current && levelId > 0 ) { 
+    if (levelStartTimeRef.current && levelId > 0 ) {
         const currentTime = (Date.now() - levelStartTimeRef.current) / 1000;
         setElapsedTime(currentTime);
     }
@@ -530,7 +532,7 @@ const GameScreen: FC<GameScreenProps> = ({
         const playerVRect = { x: player.x, y: player.y, width: player.width, height: player.height };
         if (checkCollision(playerVRect, pRect)) {
             if (player.vy > 0) {
-                if (prevPlayerY + player.height <= pRect.y + 1) { 
+                if (prevPlayerY + player.height <= pRect.y + 1) {
                     player.y = pRect.y - player.height; player.vy = 0; player.isJumping = false; player.onGround = true;
                     player.standingOnPlatform = pObj;
                     if (pObj.type === 'breakable' && !pObj.isBroken && !pObj.isBreaking) {
@@ -538,7 +540,7 @@ const GameScreen: FC<GameScreenProps> = ({
                     }
                 }
             } else if (player.vy < 0) {
-                if (prevPlayerY >= pRect.y + pRect.height - 1) { 
+                if (prevPlayerY >= pRect.y + pRect.height - 1) {
                     player.y = pRect.y + pRect.height; player.vy = 0;
                 }
             }
@@ -562,7 +564,7 @@ const GameScreen: FC<GameScreenProps> = ({
     player.sprite.x = player.x; player.sprite.y = player.y;
     player.sprite.clear(); player.sprite.rect(0, 0, player.width, player.height).fill(PLAYER_COLOR);
 
-    let gameWorldMaxY = 1000; 
+    let gameWorldMaxY = 1000;
     if (parsedData && parsedData.platforms.length > 0) {
          gameWorldMaxY = Math.max(...parsedData.platforms.map(p => p.y + DEFAULT_PLATFORM_HEIGHT)) + 200;
     }
@@ -581,9 +583,10 @@ const GameScreen: FC<GameScreenProps> = ({
 
     if (lastPlatformRef.current && player.standingOnPlatform === lastPlatformRef.current && player.onGround &&
         !newLevelRequestedRef.current && onRequestNewLevel && !isLoading) {
+      console.log("GameScreen: Player reached the last platform. Requesting new level.");
       if (winSoundRef.current) { winSoundRef.current.currentTime = 0; winSoundRef.current.play().catch(e => console.warn("Win sound err:", e)); }
-      newLevelRequestedRef.current = true;
       if (onRequestNewLevel) onRequestNewLevel();
+      newLevelRequestedRef.current = true;
     }
 
     if (app && gameContainer) {
@@ -596,11 +599,11 @@ const GameScreen: FC<GameScreenProps> = ({
         gameContainer.y += (targetY - gameContainer.y) * CAMERA_LERP_FACTOR;
     }
 
-  }, [parsedData, onRequestNewLevel, levelId, isLoading, deathCount, isPaused, gameStarted]); 
+  }, [parsedData, onRequestNewLevel, levelId, isLoading, isPaused, gameStarted]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-        if (!gameStarted || isLoading || isPaused) return; 
+        if (!gameStarted || isLoading || isPaused) return;
         keysPressedRef.current.add(event.code);
     }
     const handleKeyUp = (event: KeyboardEvent) => {
@@ -611,11 +614,11 @@ const GameScreen: FC<GameScreenProps> = ({
 
     const app = pixiAppRef.current;
     if (gameStarted && app && app.ticker) {
-      app.ticker.remove(gameLoop); 
-      if (!isLoading && !isPaused) { 
+      app.ticker.remove(gameLoop);
+      if (!isLoading && !isPaused) {
         app.ticker.add(gameLoop);
       }
-    } else if (app && app.ticker) { 
+    } else if (app && app.ticker) {
         app.ticker.remove(gameLoop);
     }
 
@@ -626,11 +629,11 @@ const GameScreen: FC<GameScreenProps> = ({
         app.ticker.remove(gameLoop);
       }
     };
-  }, [gameLoop, isLoading, isPaused, gameStarted]); 
+  }, [gameLoop, isLoading, isPaused, gameStarted]);
 
-  const handleManualGenerateFromPauseMenu = async (formData: Pick<GenerateLevelInput, 'difficulty'>) => {
-    setIsPaused(false); 
-    await onManualGenerateRequested(formData);
+  const handlePopoverFormSubmit = async (formData: Pick<GenerateLevelInput, 'difficulty'>) => {
+    setIsPaused(false); // Close pause menu first
+    await onManualGenerateRequested(formData); // This will trigger loading state in HomePage
   };
 
 
@@ -680,7 +683,7 @@ const GameScreen: FC<GameScreenProps> = ({
     <>
       <Card className="border-primary shadow-lg bg-card/80 backdrop-blur-sm flex-grow flex flex-col">
         <CardHeader className="flex flex-row items-center justify-between p-4">
-          <CardTitle className="text-primary uppercase text-sm md:text-base tracking-wider flex items-center gap-x-2 md:gap-x-3">
+          <CardTitle className="text-primary uppercase text-sm md:text-base tracking-wider flex items-center gap-x-2 md:gap-x-3 flex-wrap">
             <span>Level {levelId > 0 ? levelId : '...'}</span>
             <span className="text-foreground/70">|</span>
             <span>Deaths: {deathCount}</span>
@@ -704,9 +707,9 @@ const GameScreen: FC<GameScreenProps> = ({
                     <div className="grid gap-4 py-4">
                         <div className="border p-3 rounded-md border-border bg-background/30">
                              <LevelGeneratorForm
-                                onGenerateRequested={handleManualGenerateFromPauseMenu}
+                                onGenerateRequested={handlePopoverFormSubmit}
                                 initialValues={defaultLevelParams}
-                                onFormSubmitted={() => {}} 
+                                onFormSubmitted={() => { /* setIsPaused(false) is handled by onGenerateRequested -> handlePopoverFormSubmit */ }}
                             />
                         </div>
                         <div className="border p-3 rounded-md border-border bg-background/30">
@@ -714,8 +717,8 @@ const GameScreen: FC<GameScreenProps> = ({
                         </div>
                     </div>
                     <DialogFooter>
-                        <Button 
-                            onClick={() => setIsPaused(false)} 
+                        <Button
+                            onClick={() => setIsPaused(false)}
                             className="w-full bg-accent hover:bg-accent/90 text-accent-foreground uppercase tracking-wider text-lg py-3 h-12"
                             size="lg"
                         >
@@ -729,23 +732,23 @@ const GameScreen: FC<GameScreenProps> = ({
         <CardContent className="flex-grow p-0 m-0 relative overflow-hidden rounded-b-lg">
           <div
             ref={pixiContainerRef}
-            className="w-full h-full bg-black/50" 
+            className="w-full h-full bg-black/50"
             aria-label="Game canvas"
             data-ai-hint="gameplay screenshot"
           />
           {isLoading && (
             <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center text-center text-foreground z-20 p-4 rounded-b-lg">
               <Loader2 className="w-12 h-12 animate-spin text-primary mb-4" />
-              { (levelId === 0 && gameStarted) ? ( 
+              { (levelId === 0 && gameStarted) ? (
                   <p className="text-lg">Loading Game... Generating Level 1...</p>
               ) : (
-                  gameStarted && levelId > 0 ? ( 
+                  gameStarted && levelId > 0 ? (
                       <>
                           <p className="text-2xl font-bold mb-2">Level {levelId} Complete!</p>
                           <p className="text-lg">Generating Level {levelId + 1}...</p>
                       </>
                   ) : (
-                      <p className="text-lg">Loading...</p>
+                      <p className="text-lg">Loading...</p> // Fallback, should ideally not be hit if gameStarted logic is correct
                   )
               )}
             </div>
@@ -757,5 +760,3 @@ const GameScreen: FC<GameScreenProps> = ({
 };
 
 export default GameScreen;
-
-    
