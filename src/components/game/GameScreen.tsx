@@ -33,9 +33,11 @@ const parseLevelData = (levelDataString: string | undefined): ParsedLevelData | 
   try {
     const trimmedData = levelDataString.trim();
     if (!trimmedData) return null;
+    // IMPORTANT: Ensure the AI output is ONLY the JSON string.
+    // Any preceding/succeeding text (like "```json" or explanations) will cause parse errors.
     const data = JSON.parse(trimmedData);
     if (!data.platforms || !Array.isArray(data.platforms)) data.platforms = [];
-    data.obstacles = [];
+    data.obstacles = []; // Obstacles are not rendered
     return data as ParsedLevelData;
   } catch (error) {
     console.error("Failed to parse level data for GameScreen:", error, "Data string:", levelDataString);
@@ -61,10 +63,10 @@ const PLAYER_COLOR = 0xFFDE00;
 
 const DEFAULT_PLATFORM_MOVE_SPEED = 0.5;
 const DEFAULT_PLATFORM_MOVE_RANGE = 50;
-const TIMED_PLATFORM_VISIBLE_DURATION = 3 * 60;
-const TIMED_PLATFORM_HIDDEN_DURATION = 2 * 60;
-const BREAKABLE_PLATFORM_BREAK_DELAY = 0.5 * 60;
-const BREAKABLE_PLATFORM_RESPAWN_DURATION = 5 * 60;
+const TIMED_PLATFORM_VISIBLE_DURATION = 3 * 60; // 3 seconds at 60fps
+const TIMED_PLATFORM_HIDDEN_DURATION = 2 * 60;  // 2 seconds at 60fps
+const BREAKABLE_PLATFORM_BREAK_DELAY = 0.5 * 60; // 0.5 seconds
+const BREAKABLE_PLATFORM_RESPAWN_DURATION = 5 * 60; // 5 seconds
 
 const CAMERA_LERP_FACTOR = 0.1;
 const DESIRED_GAME_SCALE = 2.5;
@@ -165,12 +167,12 @@ const GameScreen: FC<GameScreenProps> = ({
   useEffect(() => {
     if (!gameStarted) return;
 
-    if (levelId > 0 && prevLevelIdRef.current !== undefined && prevLevelIdRef.current !== levelId && levelId !== 0) {
+    if (prevLevelIdRef.current !== undefined && prevLevelIdRef.current !== levelId && levelId !== 0) {
         console.log(`GameScreen: levelId changed from ${prevLevelIdRef.current} to ${levelId}. Resetting newLevelRequestedRef.`);
         newLevelRequestedRef.current = false;
     }
     
-    if (levelId > 0) {
+    if (levelId > 0) { // Start or new level
         setElapsedTime(0);
         levelStartTimeRef.current = Date.now();
     } else if (levelId === 0 && gameStarted) { // Signifies start of a manual reset or new game
@@ -195,14 +197,13 @@ const GameScreen: FC<GameScreenProps> = ({
         lastPlatformRef.current = null;
         console.log("GameScreen: PixiJS app destroyed because game has not started.");
       }
-      // Clean up sounds if game is stopped
       if (jumpSoundRef.current) { jumpSoundRef.current.pause(); jumpSoundRef.current = null; }
       if (deathSoundRef.current) { deathSoundRef.current.pause(); deathSoundRef.current = null; }
       if (winSoundRef.current) { winSoundRef.current.pause(); winSoundRef.current = null; }
       return;
     }
 
-    if (pixiAppRef.current) return; // Already initialized
+    if (pixiAppRef.current) return; 
 
     if (PIXI.TextureSource && PIXI.SCALE_MODES) {
         PIXI.TextureSource.defaultOptions.scaleMode = PIXI.SCALE_MODES.NEAREST;
@@ -236,10 +237,10 @@ const GameScreen: FC<GameScreenProps> = ({
       console.log("GameScreen: Audio objects created.");
 
 
-      if (levelId > 0) {
+      if (levelId > 0) { // If starting directly into a level (e.g. after start screen)
         levelStartTimeRef.current = Date.now();
       } else {
-        levelStartTimeRef.current = null; // Will be set when level 1 generation is complete
+        levelStartTimeRef.current = null; // Will be set when level 1 generation is complete if starting from level 0
       }
     })();
 
@@ -539,29 +540,29 @@ const GameScreen: FC<GameScreenProps> = ({
         const pRect = { x: pObj.sprite.x, y: pObj.sprite.y, width: pObj.width, height: pObj.height };
         const playerVRect = { x: player.x, y: player.y, width: player.width, height: player.height };
         if (checkCollision(playerVRect, pRect)) {
-            if (player.vy > 0) {
-                if (prevPlayerY + player.height <= pRect.y + 1) {
+            if (player.vy > 0) { // Falling down
+                if (prevPlayerY + player.height <= pRect.y + 1) { // Check if player was above or at the same level
                     player.y = pRect.y - player.height; player.vy = 0; player.isJumping = false; player.onGround = true;
                     player.standingOnPlatform = pObj;
                     if (pObj.type === 'breakable' && !pObj.isBroken && !pObj.isBreaking) {
                         pObj.isBreaking = true; pObj.breakingTimer = BREAKABLE_PLATFORM_BREAK_DELAY;
                     }
                 }
-            } else if (player.vy < 0) {
-                if (prevPlayerY >= pRect.y + pRect.height - 1) {
+            } else if (player.vy < 0) { // Moving up (jumping)
+                if (prevPlayerY >= pRect.y + pRect.height -1 ) { // Check if player was below or at the same level
                     player.y = pRect.y + pRect.height; player.vy = 0;
                 }
             }
         }
     }
 
-    if (!player.onGround && player.standingOnPlatform) {
+    if (!player.onGround && player.standingOnPlatform) { // Check if player slid off a platform
         let stillOn = false; const p = player.standingOnPlatform;
         if (!((p.type === 'timed' && !p.isVisible) || (p.type === 'breakable' && p.isBroken))) {
              const pRect = { x: p.sprite.x, y: p.sprite.y, width: p.width, height: p.height };
              const pFeetY = player.y + player.height;
              if (player.x + player.width > pRect.x && player.x < pRect.x + pRect.width &&
-                 pFeetY >= pRect.y && pFeetY < pRect.y + Math.abs(player.vy) + GRAVITY + 1) {
+                 pFeetY >= pRect.y && pFeetY < pRect.y + Math.abs(player.vy) + GRAVITY + 1) { // Small tolerance
                  player.y = pRect.y - player.height; player.vy = 0; player.isJumping = false;
                  player.onGround = true; stillOn = true;
              }
@@ -572,9 +573,9 @@ const GameScreen: FC<GameScreenProps> = ({
     player.sprite.x = player.x; player.sprite.y = player.y;
     player.sprite.clear(); player.sprite.rect(0, 0, player.width, player.height).fill(PLAYER_COLOR);
 
-    let gameWorldMaxY = 1000;
+    let gameWorldMaxY = 1000; // Default fall boundary if no platforms
     if (parsedData && parsedData.platforms.length > 0) {
-         gameWorldMaxY = Math.max(...parsedData.platforms.map(p => p.y + DEFAULT_PLATFORM_HEIGHT)) + 200;
+         gameWorldMaxY = Math.max(...parsedData.platforms.map(p => p.y + DEFAULT_PLATFORM_HEIGHT)) + 200; // 200 units below lowest platform
     }
     if (player.y > gameWorldMaxY) {
         if (deathSoundRef.current) { 
@@ -588,7 +589,7 @@ const GameScreen: FC<GameScreenProps> = ({
             const respawnP = platformObjectsRef.current.find(p => p.type === 'standard' || !p.type) || platformObjectsRef.current[0];
             player.x = respawnP.sprite.x + respawnP.width / 2 - player.width / 2;
             player.y = respawnP.sprite.y - PLAYER_HEIGHT;
-        } else { player.x = 50; player.y = 100; }
+        } else { player.x = 50; player.y = 100; } // Fallback respawn
         player.vy = 0; player.isJumping = false; player.onGround = false; player.standingOnPlatform = null;
         player.height = PLAYER_HEIGHT; player.isCrouching = false;
     }
@@ -615,7 +616,7 @@ const GameScreen: FC<GameScreenProps> = ({
         gameContainer.y += (targetY - gameContainer.y) * CAMERA_LERP_FACTOR;
     }
 
-  }, [parsedData, onRequestNewLevel, levelId, isLoading, isPaused, gameStarted, globalVolume]);
+  }, [parsedData, onRequestNewLevel, levelId, isLoading, isPaused, gameStarted, globalVolume]); // Removed elapsedTime
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -630,11 +631,11 @@ const GameScreen: FC<GameScreenProps> = ({
 
     const app = pixiAppRef.current;
     if (gameStarted && app && app.ticker) {
-      app.ticker.remove(gameLoop);
+      app.ticker.remove(gameLoop); // Remove previous instance if any
       if (!isLoading && !isPaused) {
         app.ticker.add(gameLoop);
       }
-    } else if (app && app.ticker) {
+    } else if (app && app.ticker) { // Ensure cleanup if game not started or app exists
         app.ticker.remove(gameLoop);
     }
 
@@ -648,7 +649,7 @@ const GameScreen: FC<GameScreenProps> = ({
   }, [gameLoop, isLoading, isPaused, gameStarted]);
 
   const handlePopoverFormSubmit = async (formData: Pick<GenerateLevelInput, 'difficulty'>) => {
-    setIsPaused(false); 
+    setIsPaused(false); // Close pause menu
     await onManualGenerateRequested(formData); 
   };
 
@@ -697,7 +698,7 @@ const GameScreen: FC<GameScreenProps> = ({
 
   return (
     <>
-      <Card className="border-primary shadow-lg bg-card/80 backdrop-blur-sm flex-grow flex flex-col">
+      <Card className="shadow-lg bg-card/80 backdrop-blur-sm flex-grow flex flex-col border-none rounded-none">
         <CardHeader className="flex flex-row items-center justify-between p-4">
           <CardTitle className="text-primary uppercase text-sm md:text-base tracking-wider flex items-center gap-x-2 md:gap-x-3 flex-wrap">
             <span>Level {levelId > 0 ? levelId : '...'}</span>
@@ -760,15 +761,15 @@ const GameScreen: FC<GameScreenProps> = ({
             </Dialog>
           </div>
         </CardHeader>
-        <CardContent className="flex-grow p-0 m-0 relative overflow-hidden rounded-b-lg">
+        <CardContent className="flex-grow p-0 m-0 relative overflow-hidden"> {/* Removed rounded-b-lg */}
           <div
             ref={pixiContainerRef}
-            className="w-full h-full bg-black/50"
+            className="w-full h-full bg-black/50" // This creates the game canvas background
             aria-label="Game canvas"
             data-ai-hint="gameplay screenshot"
           />
-          {isLoading && (
-            <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center text-center text-foreground z-20 p-4 rounded-b-lg">
+          {isLoading && ( // This is the main loading overlay
+            <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center text-center text-foreground z-20 p-4">
               <Loader2 className="w-12 h-12 animate-spin text-primary mb-4" />
               { (levelId === 0 && gameStarted) ? (
                   <p className="text-lg">Loading Game... Generating Level 1...</p>
@@ -779,7 +780,7 @@ const GameScreen: FC<GameScreenProps> = ({
                           <p className="text-lg">Generating Level {levelId + 1}...</p>
                       </>
                   ) : (
-                      <p className="text-lg">Loading...</p> 
+                      <p className="text-lg">Loading...</p> // Should ideally not be hit if gameStarted is false
                   )
               )}
             </div>
@@ -791,4 +792,3 @@ const GameScreen: FC<GameScreenProps> = ({
 };
 
 export default GameScreen;
-

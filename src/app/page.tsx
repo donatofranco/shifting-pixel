@@ -1,9 +1,8 @@
 
 "use client";
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import type { GenerateLevelOutput, GenerateLevelInput } from '@/ai/flows/generate-level';
-// SiteHeader is removed
 import GameScreen from '@/components/game/GameScreen';
 import { handleGenerateLevelAction } from '@/app/actions';
 import { useToast } from "@/hooks/use-toast";
@@ -14,10 +13,10 @@ const DEFAULT_DIFFICULTY_PARAM: Pick<GenerateLevelInput, 'difficulty'> = {
 
 export default function HomePage() {
   const [generatedLevel, setGeneratedLevel] = useState<GenerateLevelOutput | null>(null);
-  const [isLoadingLevel, setIsLoadingLevel] = useState<boolean>(false); // Starts false, GameScreen handles initial load text
+  const [isLoadingLevel, setIsLoadingLevel] = useState<boolean>(false);
   const [gameStarted, setGameStarted] = useState<boolean>(false);
   const { toast } = useToast();
-  const [levelCount, setLevelCount] = useState(0); // 0 means no level loaded / game not started properly
+  const [levelCount, setLevelCount] = useState(0);
 
   const triggerLevelGeneration = useCallback(async (params: Pick<GenerateLevelInput, 'difficulty'>, isInitialStart: boolean = false) => {
     setIsLoadingLevel(true);
@@ -34,7 +33,7 @@ export default function HomePage() {
           description: result.error || "An unknown error occurred.",
         });
         setGeneratedLevel(null);
-        if (isInitialStart) setGameStarted(false); // If initial gen fails, allow retry from start screen
+        if (isInitialStart) setGameStarted(false); 
       } else {
         console.log(`HomePage: Level ${targetLevelNumber} generated successfully.`);
         setGeneratedLevel(result);
@@ -60,14 +59,14 @@ export default function HomePage() {
 
   const handleStartGame = useCallback((difficulty: GenerateLevelInput['difficulty']) => {
     setGameStarted(true);
-    setLevelCount(0); 
+    setLevelCount(0); // Reset level count for a new game
     triggerLevelGeneration({ difficulty }, true);
   }, [triggerLevelGeneration]);
 
   const processManualLevelGeneration = useCallback(async (formData: Pick<GenerateLevelInput, 'difficulty'>) => {
     console.log(`HomePage: processManualLevelGeneration called with difficulty:`, formData.difficulty);
     setIsLoadingLevel(true);
-    setLevelCount(0); 
+    setLevelCount(0); // Signal that this is a reset to level 1
 
     try {
       const result = await handleGenerateLevelAction(formData);
@@ -82,7 +81,7 @@ export default function HomePage() {
       } else {
         console.log("HomePage: Manual level generated successfully.");
         setGeneratedLevel(result);
-        setLevelCount(1); 
+        setLevelCount(1); // Set to level 1
         toast({
           title: "Level 1 Generated Manually!",
           description: "The new adventure begins.",
@@ -107,11 +106,18 @@ export default function HomePage() {
     triggerLevelGeneration(DEFAULT_DIFFICULTY_PARAM, false);
   }, [triggerLevelGeneration, levelCount]);
 
+  // Effect to handle the initial game state (show start screen)
+  useEffect(() => {
+    if (!gameStarted) {
+      setIsLoadingLevel(false); // Ensure loading is false if game hasn't started
+      setGeneratedLevel(null); // Clear any previous level data
+      setLevelCount(0); // Reset level count
+    }
+  }, [gameStarted]);
+
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground selection:bg-primary selection:text-primary-foreground">
-      {/* SiteHeader removed */}
-      {/* The main container for GameScreen is now simpler */}
-      <main className="flex-grow flex flex-col p-1 md:p-2"> {/* Reduced padding even more */}
+      <main className="flex-grow flex flex-col"> {/* Removed padding p-1 md:p-2 */}
             <GameScreen
               levelOutput={generatedLevel}
               onRequestNewLevel={handleRequestNewLevel}
@@ -123,7 +129,6 @@ export default function HomePage() {
               onStartGame={handleStartGame}
             />
       </main>
-      {/* Footer removed */}
     </div>
   );
 }
