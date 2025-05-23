@@ -414,7 +414,7 @@ const GameScreen: FC<GameScreenProps> = ({
         const mobileRect = { x: nextX, y: pObj.sprite.y, width: pObj.width, height: pObj.height };
         for (const otherP of platformObjectsRef.current) {
             if (pObj === otherP) continue;
-            const otherSolid = !((otherP.type === 'timed' && !otherP.isVisible) || (otherP.type === 'breakable' && (otherP.isBroken || (otherP.isBreaking && otherP.breakingTimer !== undefined && p.breakingTimer <=0) )));
+            const otherSolid = !((otherP.type === 'timed' && !otherP.isVisible) || (otherP.type === 'breakable' && (otherP.isBroken || (otherP.isBreaking && otherP.breakingTimer !== undefined && otherP.breakingTimer <=0) )));
             if (otherSolid) {
                 const otherRect = { x: otherP.sprite.x, y: otherP.sprite.y, width: otherP.width, height: otherP.height };
                 if (checkCollision(mobileRect, otherRect)) { pObj.moveDirectionX *= -1; nextX = pObj.sprite.x; collided = true; break; }
