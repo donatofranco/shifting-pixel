@@ -8,7 +8,7 @@ import type { GenerateLevelOutput, GenerateLevelInput } from '@/ai/flows/generat
 import type { ParsedLevelData, Platform as PlatformData } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from '@/components/ui/dialog';
 import { Loader2, TimerIcon, PauseIcon, PlayIcon, SlidersHorizontal, Volume2, ListTree, Footprints } from 'lucide-react';
 import LevelGeneratorForm from '@/components/game/LevelGeneratorForm';
 import ControlsGuide from '@/components/game/ControlsGuide';
@@ -177,12 +177,15 @@ const GameScreen: FC<GameScreenProps> = ({
         newLevelRequestedRef.current = false;
     }
     
-    if (currentLevelId > 0) {
+    if (currentLevelId > 0 || (currentLevelId === 0 && gameStarted && parsedData)) { // If level 0 is from manual generation
         setElapsedTime(0);
         levelStartTimeRef.current = Date.now();
         setCurrentStandingPlatformIndex(null);
-    } else if (currentLevelId === 0 && gameStarted) { 
-        console.log("GameScreen: Level ID is 0 (manual generation or game start), resetting counters.");
+        if (currentLevelId === 0) { // Reset death count for manual generation start
+             setDeathCount(0);
+        }
+    } else if (currentLevelId === 0 && gameStarted && !parsedData) { // Initial game start, no level yet
+        console.log("GameScreen: Initial game start, level 0, no parsed data yet. Resetting counters.");
         setElapsedTime(0);
         setDeathCount(0);
         setCurrentStandingPlatformIndex(null);
@@ -191,7 +194,7 @@ const GameScreen: FC<GameScreenProps> = ({
     }
 
     prevLevelIdRef.current = currentLevelId;
-  }, [levelId, gameStarted]);
+  }, [levelId, gameStarted, parsedData]);
 
   useEffect(() => {
     if (!gameStarted) {
@@ -210,7 +213,7 @@ const GameScreen: FC<GameScreenProps> = ({
       return;
     }
 
-    if (pixiAppRef.current) return;
+    if (pixiAppRef.current) return; // Don't re-init if app already exists
 
     if (PIXI.TextureSource && PIXI.SCALE_MODES) {
         PIXI.TextureSource.defaultOptions.scaleMode = PIXI.SCALE_MODES.NEAREST;
@@ -267,7 +270,7 @@ const GameScreen: FC<GameScreenProps> = ({
         console.log("GameScreen: PixiJS app destroyed on cleanup.");
       }
     };
-  }, [gameStarted]);
+  }, [gameStarted]); // Only depends on gameStarted for initial setup/cleanup
 
 
   useEffect(() => {
@@ -406,7 +409,7 @@ const GameScreen: FC<GameScreenProps> = ({
     }
     if (player.sprite) player.sprite.visible = true;
 
-    if (levelStartTimeRef.current && levelId > 0 ) {
+    if (levelStartTimeRef.current && (levelId > 0 || (levelId === 0 && parsedData))) { // Also update time if level 0 from manual gen
         const currentTime = (Date.now() - levelStartTimeRef.current) / 1000;
         setElapsedTime(currentTime);
     }
@@ -576,7 +579,6 @@ const GameScreen: FC<GameScreenProps> = ({
                  pFeetY >= pRect.y && pFeetY < pRect.y + Math.abs(player.vy) + GRAVITY + 1) {
                  player.y = pRect.y - player.height; player.vy = 0; player.isJumping = false;
                  player.onGround = true; stillOn = true;
-                 // No need to update currentStandingPlatformIndex here, already set when landed or still on same platform
              }
         }
         if (!stillOn) {
@@ -648,11 +650,11 @@ const GameScreen: FC<GameScreenProps> = ({
 
     const app = pixiAppRef.current;
     if (gameStarted && app && app.ticker) {
-      app.ticker.remove(gameLoop);
-      if (!isLoading && !isPaused) {
+      app.ticker.remove(gameLoop); // Remove any existing instance
+      if (!isLoading && !isPaused) { // Only add if not loading and not paused
         app.ticker.add(gameLoop);
       }
-    } else if (app && app.ticker) {
+    } else if (app && app.ticker) { // If game not started, or app/ticker invalid, ensure gameLoop is removed
         app.ticker.remove(gameLoop);
     }
 
@@ -666,11 +668,12 @@ const GameScreen: FC<GameScreenProps> = ({
   }, [gameLoop, isLoading, isPaused, gameStarted]);
 
   const handlePopoverFormSubmit = async (formData: Pick<GenerateLevelInput, 'difficulty'>) => {
-    setIsPaused(false);
-    await onManualGenerateRequested(formData);
+    setIsPaused(false); // Close pause menu
+    await onManualGenerateRequested(formData); // This will trigger loading state in HomePage
   };
 
   useEffect(() => {
+    // Sync start screen difficulty with defaultDifficulty from props (which comes from HomePage's currentDifficulty)
     setStartScreenDifficulty(defaultDifficulty);
   }, [defaultDifficulty]);
 
@@ -730,15 +733,15 @@ const GameScreen: FC<GameScreenProps> = ({
           {isLoading && (
             <div className="absolute inset-0 bg-background/80 flex flex-col items-center justify-center text-center text-foreground z-20 p-4">
               <Loader2 className="w-12 h-12 animate-spin text-primary mb-4" />
-              { (levelId === 0 && gameStarted) ? (
+              { (levelId === 0 && gameStarted) ? ( // This covers initial load after pressing start OR manual generation
                   <p className="text-lg">Loading Game... Generating Level 1...</p>
               ) : (
-                  gameStarted && levelId > 0 ? (
+                  gameStarted && levelId > 0 ? ( // This covers level transitions
                       <>
                           <p className="text-2xl font-bold mb-2">Level {levelId} Complete!</p>
                           <p className="text-lg">Generating Level {levelId + 1}...</p>
                       </>
-                  ) : (
+                  ) : ( // Fallback, though less likely to be hit with current logic
                       <p className="text-lg">Loading...</p>
                   )
               )}
@@ -748,14 +751,14 @@ const GameScreen: FC<GameScreenProps> = ({
 
         <CardHeader className="absolute top-0 left-0 right-0 z-10 flex flex-row items-center justify-between p-4 bg-background/70 backdrop-blur-sm">
           <CardTitle className="text-primary uppercase text-sm md:text-base tracking-wider flex items-center gap-x-2 md:gap-x-3 flex-wrap">
-            <span>Level {levelId > 0 ? levelId : '...'}</span>
+            <span>Level {levelId > 0 ? levelId : (parsedData && levelId === 0 ? '1' : '...')}</span>
             <span className="text-foreground/70">|</span>
             <span>Deaths: {deathCount}</span>
             <span className="text-foreground/70">|</span>
             <span className="flex items-center">
               <TimerIcon className="w-4 h-4 mr-1 text-foreground/70" /> {formatTime(elapsedTime)}
             </span>
-            {parsedData && parsedData.platforms && (
+            {parsedData && parsedData.platforms && parsedData.platforms.length > 0 && (
               <>
                 <span className="text-foreground/70">|</span>
                 <span className="flex items-center" title="Total Platforms in Level">
@@ -827,3 +830,4 @@ const GameScreen: FC<GameScreenProps> = ({
 };
 
 export default GameScreen;
+
