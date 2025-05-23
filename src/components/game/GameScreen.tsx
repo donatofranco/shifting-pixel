@@ -8,7 +8,7 @@ import type { GenerateLevelOutput, GenerateLevelInput } from '@/ai/flows/generat
 import type { ParsedLevelData, Platform as PlatformData } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Loader2, TimerIcon, PauseIcon, PlayIcon, Gamepad2, SlidersHorizontal, Volume2, ListTree, Footprints, ArrowUp, ArrowDown, ArrowLeft, ArrowRight } from 'lucide-react';
 import LevelGeneratorForm from '@/components/game/LevelGeneratorForm';
 import ControlsGuide from '@/components/game/ControlsGuide';
@@ -164,7 +164,7 @@ const GameScreen: FC<GameScreenProps> = ({
 
   const parsedData = useMemo(() => {
     if (gameStarted && levelOutput?.levelData) {
-      console.log("GameScreen: New levelOutput received, parsing data for levelId:", levelId);
+      // console.log("GameScreen: New levelOutput received, parsing data for levelId:", levelId);
       return parseLevelData(levelOutput.levelData);
     }
     return null;
@@ -173,8 +173,6 @@ const GameScreen: FC<GameScreenProps> = ({
  useEffect(() => {
     const currentLevelId = levelId === undefined ? 0 : levelId;
     const previousLevelId = prevLevelIdRef.current === undefined ? -1 : prevLevelIdRef.current;
-
-    console.log(`GameScreen useEffect[levelId, gameStarted]: levelId changed from ${previousLevelId} to ${currentLevelId}. gameStarted: ${gameStarted}.`);
 
     if (!gameStarted) {
         setDeathCount(0);
@@ -185,23 +183,20 @@ const GameScreen: FC<GameScreenProps> = ({
         return;
     }
     
-    if (currentLevelId === 0 && (previousLevelId === -1 || (parsedData && !levelStartTimeRef.current) )) { // Initial game start or manual reset where level 0 means "prepare for level 1"
-        console.log("GameScreen: Level 0 (start/reset). Resetting counters and timers for upcoming Level 1.");
+    if (currentLevelId === 0 ) { 
         setDeathCount(0);
         setElapsedTime(0);
         setCurrentStandingPlatformIndex(null);
         levelStartTimeRef.current = parsedData ? Date.now() : null; 
         newLevelRequestedRef.current = false;
-    } else if (previousLevelId !== currentLevelId && currentLevelId > 0) { // Transition to a new actual level (not the first one being set up)
-        console.log(`GameScreen: Actual levelId changed from ${previousLevelId} to ${currentLevelId}. Resetting timer.`);
+    } else if (previousLevelId !== currentLevelId && currentLevelId > 0) { 
         setElapsedTime(0);
-        levelStartTimeRef.current = Date.now(); // Start timer as new level is active
         setCurrentStandingPlatformIndex(null);
+        levelStartTimeRef.current = Date.now(); 
         newLevelRequestedRef.current = false;
-    } else if (parsedData && !levelStartTimeRef.current && currentLevelId > 0){ // Case where level 1 data arrives after initial setup
+    } else if (parsedData && !levelStartTimeRef.current && currentLevelId > 0){ 
         levelStartTimeRef.current = Date.now();
     }
-
 
     prevLevelIdRef.current = currentLevelId;
   }, [levelId, gameStarted, parsedData]);
@@ -218,7 +213,6 @@ const GameScreen: FC<GameScreenProps> = ({
     const screenHeight = containerElement.clientHeight;
 
     if (screenWidth <= 0 || screenHeight <= 0) {
-        // console.warn(`GameScreen: handleResize called with non-positive dimensions (${screenWidth}x${screenHeight}).`);
         return;
     }
     
@@ -226,18 +220,10 @@ const GameScreen: FC<GameScreenProps> = ({
 
     const scaleX = screenWidth / LOGICAL_GAME_WIDTH;
     const scaleY = screenHeight / LOGICAL_GAME_HEIGHT;
-    const scale = Math.max(0.001, Math.min(scaleX, scaleY)); // Prevent scale 0
+    const scale = Math.max(0.001, Math.min(scaleX, scaleY)); 
 
     gameContainer.scale.set(scale);
-    
-    // Restore these lines: Center the scaled logical view within the physical canvas.
-    // The camera logic in gameLoop will then adjust pivot based on player.
-    gameContainer.x = (screenWidth - (LOGICAL_GAME_WIDTH * scale)) / 2;
-    gameContainer.y = (screenHeight - (LOGICAL_GAME_HEIGHT * scale)) / 2;
-
-    // console.log(`GameScreen handleResize: screen (${screenWidth}x${screenHeight}), scale (${scaleX.toFixed(2)}, ${scaleY.toFixed(2)}) -> final scale ${scale.toFixed(2)}`);
-    // console.log(`GameScreen handleResize: gameContainer.x=${gameContainer.x.toFixed(2)}, gameContainer.y=${gameContainer.y.toFixed(2)}`);
-
+    // console.log(`GameScreen handleResize: Renderer resized to ${screenWidth}x${screenHeight}. Game scale set to ${scale.toFixed(2)}`);
   }, []);
 
 
@@ -250,7 +236,6 @@ const GameScreen: FC<GameScreenProps> = ({
         playerRef.current = null;
         platformObjectsRef.current = [];
         lastPlatformRef.current = null;
-        console.log("GameScreen: PixiJS app destroyed because game has not started.");
       }
       if (jumpSoundRef.current) { jumpSoundRef.current.pause(); jumpSoundRef.current = null; }
       if (deathSoundRef.current) { deathSoundRef.current.pause(); deathSoundRef.current = null; }
@@ -259,6 +244,7 @@ const GameScreen: FC<GameScreenProps> = ({
     }
 
     if (pixiAppRef.current) { 
+      // If app exists, just ensure resize is called if needed (e.g. orientation change while game was already started)
       handleResize(); 
       return;
     }
@@ -284,7 +270,6 @@ const GameScreen: FC<GameScreenProps> = ({
         pixiContainerRef.current.appendChild(app.view as HTMLCanvasElement);
       }
       pixiAppRef.current = app;
-      console.log("GameScreen: PixiJS Application initialized.");
 
       const gameContainer = new PIXI.Container();
       app.stage.addChild(gameContainer);
@@ -293,20 +278,16 @@ const GameScreen: FC<GameScreenProps> = ({
       jumpSoundRef.current = new Audio('/sounds/jump.wav');
       deathSoundRef.current = new Audio('/sounds/death.wav');
       winSoundRef.current = new Audio('/sounds/win.wav');
-      console.log("GameScreen: Audio objects created.");
-
-      // Initialize timer start reference if level 1 data is already present or game starts with levelId > 0
+      
       if ( (levelId > 0 || (levelId === 0 && parsedData)) && !levelStartTimeRef.current ) { 
         levelStartTimeRef.current = Date.now();
       }
-
 
       if (pixiContainerRef.current) {
         handleResize(); 
         resizeObserver = new ResizeObserver(handleResize);
         resizeObserver.observe(pixiContainerRef.current);
       }
-
     })();
 
     return () => {
@@ -318,8 +299,7 @@ const GameScreen: FC<GameScreenProps> = ({
       if (jumpSoundRef.current) { jumpSoundRef.current.pause(); jumpSoundRef.current = null; }
       if (deathSoundRef.current) { deathSoundRef.current.pause(); deathSoundRef.current = null; }
       if (winSoundRef.current) { winSoundRef.current.pause(); winSoundRef.current = null; }
-      console.log("GameScreen: Audio objects cleaned up.");
-
+      
       if (pixiAppRef.current) {
         pixiAppRef.current.destroy(true, { children: true, texture: true, baseTexture: true });
         pixiAppRef.current = null;
@@ -327,10 +307,9 @@ const GameScreen: FC<GameScreenProps> = ({
         playerRef.current = null;
         platformObjectsRef.current = [];
         lastPlatformRef.current = null;
-        console.log("GameScreen: PixiJS app destroyed on cleanup.");
       }
     };
-  }, [gameStarted, handleResize, parsedData, levelId]); 
+  }, [gameStarted, handleResize]); // Only gameStarted and handleResize (stable)
 
 
   useEffect(() => {
@@ -344,8 +323,6 @@ const GameScreen: FC<GameScreenProps> = ({
     lastPlatformRef.current = null;
 
     if (parsedData && parsedData.platforms.length > 0) {
-      console.log("GameScreen: Rendering parsed level data for levelId:", levelId);
-
       parsedData.platforms.forEach((platformData: PlatformData) => {
         const pSprite = new PIXI.Graphics();
         let platformColor = PLATFORM_COLOR_STANDARD;
@@ -399,7 +376,6 @@ const GameScreen: FC<GameScreenProps> = ({
               }
           });
           lastPlatformRef.current = rightmostPlatformCandidate;
-          console.log("GameScreen: Last platform identified:", lastPlatformRef.current ? `Type: ${lastPlatformRef.current.type} at X:${lastPlatformRef.current.initialX}` : "None");
       }
 
       if (!playerRef.current || !playerRef.current.sprite.parent) { 
@@ -431,6 +407,14 @@ const GameScreen: FC<GameScreenProps> = ({
           playerRef.current.isJumping = false; playerRef.current.height = PLAYER_HEIGHT;
           playerRef.current.isCrouching = false; playerRef.current.standingOnPlatform = null;
           playerRef.current.sprite.visible = true; 
+      }
+
+      // Initialize camera for the new level
+      if (playerRef.current && gameContainer && app) {
+        gameContainer.pivot.x = playerRef.current.x + playerRef.current.width / 2;
+        gameContainer.pivot.y = playerRef.current.y + playerRef.current.height / 2;
+        gameContainer.x = app.screen.width / 2;
+        gameContainer.y = app.screen.height / 2;
       }
       handleResize(); 
     } else { 
@@ -638,7 +622,7 @@ const GameScreen: FC<GameScreenProps> = ({
 
     let gameWorldMaxY = LOGICAL_GAME_HEIGHT + 200; 
     if (parsedData && parsedData.platforms.length > 0) {
-         gameWorldMaxY = Math.max(...parsedData.platforms.map(p => p.y + DEFAULT_PLATFORM_HEIGHT)) + 200; 
+         gameWorldMaxY = Math.max(...parsedData.platforms.map(p => p.y + DEFAULT_PLATFORM_HEIGHT), LOGICAL_GAME_HEIGHT) + 200; 
     }
     if (player.y > gameWorldMaxY) {
         if (deathSoundRef.current) {
@@ -660,7 +644,6 @@ const GameScreen: FC<GameScreenProps> = ({
 
     if (lastPlatformRef.current && player.standingOnPlatform === lastPlatformRef.current && player.onGround &&
         !newLevelRequestedRef.current && onRequestNewLevel && !isLoading) {
-      console.log("GameScreen: Player reached the last platform. Requesting new level.");
       if (winSoundRef.current) {
         winSoundRef.current.volume = globalVolume;
         winSoundRef.current.currentTime = 0;
@@ -685,17 +668,19 @@ const GameScreen: FC<GameScreenProps> = ({
             gameContainer.x = app.screen.width / 2; 
             gameContainer.y = app.screen.height / 2;
         } else {
-            // Fallback or error handling if pivot becomes invalid
-            gameContainer.pivot.x = LOGICAL_GAME_WIDTH / 2;
-            gameContainer.pivot.y = LOGICAL_GAME_HEIGHT / 2;
+            if (playerRef.current) {
+                gameContainer.pivot.x = playerRef.current.x + playerRef.current.width / 2;
+                gameContainer.pivot.y = playerRef.current.y + playerRef.current.height / 2;
+            } else {
+                gameContainer.pivot.x = LOGICAL_GAME_WIDTH / 2;
+                gameContainer.pivot.y = LOGICAL_GAME_HEIGHT / 2;
+            }
             gameContainer.x = app.screen.width / 2;
             gameContainer.y = app.screen.height / 2;
-            console.warn("GameScreen: Invalid pivot detected, resetting camera pivot.");
+            // console.warn("GameScreen: Invalid pivot detected, resetting camera pivot.");
         }
     }
-
-
-  }, [parsedData, onRequestNewLevel, isLoading, isPaused, gameStarted, globalVolume, levelId, handleResize]);
+  }, [parsedData, onRequestNewLevel, isLoading, isPaused, gameStarted, globalVolume, levelId]); // Removed handleResize
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -781,8 +766,8 @@ const GameScreen: FC<GameScreenProps> = ({
 
   return (
     <>
-      <Card className="shadow-lg flex-grow flex flex-col border-none rounded-none relative h-full overflow-hidden min-h-0"> {/* Added min-h-0 */}
-        <CardContent className="flex-grow p-0 m-0 relative overflow-hidden min-h-0"> {/* Added min-h-0 */}
+      <Card className="shadow-lg flex-grow flex flex-col border-none rounded-none relative h-full overflow-hidden min-h-0">
+        <CardContent className="flex-grow p-0 m-0 relative overflow-hidden min-h-0">
           <div
             ref={pixiContainerRef}
             className="w-full h-full bg-black/50" 
