@@ -170,32 +170,42 @@ const GameScreen: FC<GameScreenProps> = ({
     return null;
   }, [levelOutput, levelId, gameStarted]);
 
-  useEffect(() => {
-    if (!gameStarted) return;
-
+ useEffect(() => {
     const currentLevelId = levelId === undefined ? 0 : levelId;
     const previousLevelId = prevLevelIdRef.current === undefined ? -1 : prevLevelIdRef.current;
 
     console.log(`GameScreen useEffect[levelId, gameStarted]: levelId changed from ${previousLevelId} to ${currentLevelId}. gameStarted: ${gameStarted}.`);
 
-    if (currentLevelId === 0) { // Initial game start (manual or auto) or manual reset
-        console.log("GameScreen: Level 0 (start/reset). Resetting counters and timers.");
+    if (!gameStarted) {
         setDeathCount(0);
         setElapsedTime(0);
         setCurrentStandingPlatformIndex(null);
-        levelStartTimeRef.current = parsedData ? Date.now() : null; // Start timer if data already available
+        levelStartTimeRef.current = null;
         newLevelRequestedRef.current = false;
-    } else if (previousLevelId !== currentLevelId) { // Transition to a new level (not the first one)
-        console.log(`GameScreen: levelId changed from ${previousLevelId} to ${currentLevelId}. Resetting newLevelRequestedRef and timer.`);
+        return;
+    }
+    
+    if (currentLevelId === 0 && (previousLevelId === -1 || (parsedData && !levelStartTimeRef.current) )) { // Initial game start or manual reset where level 0 means "prepare for level 1"
+        console.log("GameScreen: Level 0 (start/reset). Resetting counters and timers for upcoming Level 1.");
+        setDeathCount(0);
         setElapsedTime(0);
-        levelStartTimeRef.current = Date.now();
+        setCurrentStandingPlatformIndex(null);
+        levelStartTimeRef.current = parsedData ? Date.now() : null; 
+        newLevelRequestedRef.current = false;
+    } else if (previousLevelId !== currentLevelId && currentLevelId > 0) { // Transition to a new actual level (not the first one being set up)
+        console.log(`GameScreen: Actual levelId changed from ${previousLevelId} to ${currentLevelId}. Resetting timer.`);
+        setElapsedTime(0);
+        levelStartTimeRef.current = Date.now(); // Start timer as new level is active
         setCurrentStandingPlatformIndex(null);
         newLevelRequestedRef.current = false;
+    } else if (parsedData && !levelStartTimeRef.current && currentLevelId > 0){ // Case where level 1 data arrives after initial setup
+        levelStartTimeRef.current = Date.now();
     }
 
 
     prevLevelIdRef.current = currentLevelId;
   }, [levelId, gameStarted, parsedData]);
+
 
   const handleResize = useCallback(() => {
     const app = pixiAppRef.current;
@@ -207,22 +217,26 @@ const GameScreen: FC<GameScreenProps> = ({
     const screenWidth = containerElement.clientWidth;
     const screenHeight = containerElement.clientHeight;
 
-    if (screenWidth === 0 || screenHeight === 0) return;
-
+    if (screenWidth <= 0 || screenHeight <= 0) {
+        // console.warn(`GameScreen: handleResize called with non-positive dimensions (${screenWidth}x${screenHeight}).`);
+        return;
+    }
+    
     app.renderer.resize(screenWidth, screenHeight);
 
     const scaleX = screenWidth / LOGICAL_GAME_WIDTH;
     const scaleY = screenHeight / LOGICAL_GAME_HEIGHT;
-    const scale = Math.min(scaleX, scaleY);
+    const scale = Math.max(0.001, Math.min(scaleX, scaleY)); // Prevent scale 0
 
     gameContainer.scale.set(scale);
     
-    // Centering the game container (pivot point is top-left of logical game, then moved)
-    // The camera logic in gameLoop will handle pivot based on player
-    // This initial positioning centers the scaled logical view within the canvas
+    // Restore these lines: Center the scaled logical view within the physical canvas.
+    // The camera logic in gameLoop will then adjust pivot based on player.
     gameContainer.x = (screenWidth - (LOGICAL_GAME_WIDTH * scale)) / 2;
     gameContainer.y = (screenHeight - (LOGICAL_GAME_HEIGHT * scale)) / 2;
 
+    // console.log(`GameScreen handleResize: screen (${screenWidth}x${screenHeight}), scale (${scaleX.toFixed(2)}, ${scaleY.toFixed(2)}) -> final scale ${scale.toFixed(2)}`);
+    // console.log(`GameScreen handleResize: gameContainer.x=${gameContainer.x.toFixed(2)}, gameContainer.y=${gameContainer.y.toFixed(2)}`);
 
   }, []);
 
@@ -248,7 +262,7 @@ const GameScreen: FC<GameScreenProps> = ({
       handleResize(); 
       return;
     }
-
+    
     if (PIXI.TextureSource && PIXI.SCALE_MODES) {
         PIXI.TextureSource.defaultOptions.scaleMode = PIXI.SCALE_MODES.NEAREST;
     }
@@ -281,11 +295,11 @@ const GameScreen: FC<GameScreenProps> = ({
       winSoundRef.current = new Audio('/sounds/win.wav');
       console.log("GameScreen: Audio objects created.");
 
-      if (levelId > 0 || (levelId === 0 && parsedData)) { 
+      // Initialize timer start reference if level 1 data is already present or game starts with levelId > 0
+      if ( (levelId > 0 || (levelId === 0 && parsedData)) && !levelStartTimeRef.current ) { 
         levelStartTimeRef.current = Date.now();
-      } else {
-        levelStartTimeRef.current = null;
       }
+
 
       if (pixiContainerRef.current) {
         handleResize(); 
@@ -316,7 +330,7 @@ const GameScreen: FC<GameScreenProps> = ({
         console.log("GameScreen: PixiJS app destroyed on cleanup.");
       }
     };
-  }, [gameStarted, handleResize, parsedData]); // Removed levelId from here, managed by other effects
+  }, [gameStarted, handleResize, parsedData, levelId]); 
 
 
   useEffect(() => {
@@ -441,7 +455,7 @@ const GameScreen: FC<GameScreenProps> = ({
     if (player.sprite && !player.sprite.visible) player.sprite.visible = true;
 
 
-    if (levelStartTimeRef.current && !isPaused && (levelId > 0 || (levelId === 0 && parsedData))) {
+    if (levelStartTimeRef.current && !isPaused && (levelId > 0 || (levelId === 0 && parsedData && gameStarted))) {
         const currentTime = (Date.now() - levelStartTimeRef.current) / 1000;
         setElapsedTime(currentTime);
     }
@@ -656,7 +670,8 @@ const GameScreen: FC<GameScreenProps> = ({
       newLevelRequestedRef.current = true;
     }
 
-    if (app && gameContainer && gameContainer.scale.x > 0 && gameContainer.scale.y > 0) { // Added scale check
+    // Camera logic: follow player with lerp and pivot
+    if (app && gameContainer && gameContainer.scale.x > 0 && gameContainer.scale.y > 0) { 
         const targetPivotX = player.x + player.width / 2;
         let targetPivotY = player.y + player.height / 2;
         if (player.isCrouching) {
@@ -666,9 +681,8 @@ const GameScreen: FC<GameScreenProps> = ({
         gameContainer.pivot.x += (targetPivotX - gameContainer.pivot.x) * CAMERA_LERP_FACTOR;
         gameContainer.pivot.y += (targetPivotY - gameContainer.pivot.y) * CAMERA_LERP_FACTOR;
         
-        // Make sure pivot doesn't go to NaN or Infinity if scale is 0
         if (Number.isFinite(gameContainer.pivot.x) && Number.isFinite(gameContainer.pivot.y)) {
-            gameContainer.x = app.screen.width / 2;
+            gameContainer.x = app.screen.width / 2; 
             gameContainer.y = app.screen.height / 2;
         } else {
             // Fallback or error handling if pivot becomes invalid
@@ -796,7 +810,7 @@ const GameScreen: FC<GameScreenProps> = ({
 
         <CardHeader className="absolute top-0 left-0 right-0 z-10 flex flex-row items-center justify-between p-4 bg-background/70 backdrop-blur-sm">
           <CardTitle className="text-primary uppercase text-sm md:text-base tracking-wider flex items-center gap-x-2 md:gap-x-3 flex-wrap">
-            <span>Level {levelId > 0 ? levelId : (parsedData && levelId === 0 ? '1' : '...')}</span>
+            <span>Level {levelId > 0 ? levelId : (parsedData && gameStarted ? '1' : '...')}</span>
             <span className="text-foreground/70">|</span>
             <span>Deaths: {deathCount}</span>
             <span className="text-foreground/70">|</span>
