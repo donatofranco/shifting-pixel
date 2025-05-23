@@ -9,7 +9,7 @@ import type { ParsedLevelData, Platform as PlatformData } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from '@/components/ui/dialog';
-import { Loader2, TimerIcon, PauseIcon, PlayIcon, SlidersHorizontal, Volume2 } from 'lucide-react';
+import { Loader2, TimerIcon, PauseIcon, PlayIcon, SlidersHorizontal, Volume2, ListTree } from 'lucide-react'; // Added ListTree
 import LevelGeneratorForm from '@/components/game/LevelGeneratorForm';
 import ControlsGuide from '@/components/game/ControlsGuide';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -23,7 +23,7 @@ interface GameScreenProps {
   levelId?: number;
   isLoading: boolean;
   onManualGenerateRequested: (formData: Pick<GenerateLevelInput, 'difficulty'>) => Promise<void>;
-  defaultDifficulty: GenerateLevelInput['difficulty']; // Changed from defaultLevelParams
+  defaultDifficulty: GenerateLevelInput['difficulty'];
   gameStarted: boolean;
   onStartGame: (difficulty: GenerateLevelInput['difficulty']) => void;
 }
@@ -115,7 +115,7 @@ const GameScreen: FC<GameScreenProps> = ({
   levelId = 0,
   isLoading,
   onManualGenerateRequested,
-  defaultDifficulty, // Changed from defaultLevelParams
+  defaultDifficulty,
   gameStarted,
   onStartGame,
 }) => {
@@ -167,6 +167,8 @@ const GameScreen: FC<GameScreenProps> = ({
 
     const currentLevelId = levelId === undefined ? 0 : levelId;
     const previousLevelId = prevLevelIdRef.current === undefined ? -1 : prevLevelIdRef.current;
+
+    console.log(`GameScreen useEffect[levelId, gameStarted]: levelId changed from ${previousLevelId} to ${currentLevelId}. gameStarted: ${gameStarted}.`);
 
     if (previousLevelId !== currentLevelId && currentLevelId !== 0) {
         console.log(`GameScreen: levelId changed from ${previousLevelId} to ${currentLevelId}. Resetting newLevelRequestedRef.`);
@@ -261,7 +263,7 @@ const GameScreen: FC<GameScreenProps> = ({
         console.log("GameScreen: PixiJS app destroyed on cleanup.");
       }
     };
-  }, [gameStarted]); 
+  }, [gameStarted]); // Removed levelId dependency here
 
 
   useEffect(() => {
@@ -617,7 +619,7 @@ const GameScreen: FC<GameScreenProps> = ({
         gameContainer.y += (targetY - gameContainer.y) * CAMERA_LERP_FACTOR;
     }
 
-  }, [parsedData, onRequestNewLevel, levelId, isLoading, isPaused, gameStarted, globalVolume]);
+  }, [parsedData, onRequestNewLevel, isLoading, isPaused, gameStarted, globalVolume, levelId]); // Added levelId
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -654,7 +656,6 @@ const GameScreen: FC<GameScreenProps> = ({
     await onManualGenerateRequested(formData); 
   };
 
-  // Update start screen difficulty selector if defaultDifficulty prop changes
   useEffect(() => {
     setStartScreenDifficulty(defaultDifficulty);
   }, [defaultDifficulty]);
@@ -740,6 +741,14 @@ const GameScreen: FC<GameScreenProps> = ({
             <span className="flex items-center">
               <TimerIcon className="w-4 h-4 mr-1 text-foreground/70" /> {formatTime(elapsedTime)}
             </span>
+            {parsedData && parsedData.platforms && (
+              <>
+                <span className="text-foreground/70">|</span>
+                <span className="flex items-center">
+                    <ListTree className="w-4 h-4 mr-1 text-foreground/70" /> {parsedData.platforms.length}
+                </span>
+              </>
+            )}
           </CardTitle>
           <div className="flex items-center gap-1">
             <Dialog open={isPaused} onOpenChange={setIsPaused}>
@@ -757,7 +766,7 @@ const GameScreen: FC<GameScreenProps> = ({
                         <div className="border p-3 rounded-md border-border bg-background/30">
                              <LevelGeneratorForm
                                 onGenerateRequested={handlePopoverFormSubmit}
-                                initialDifficulty={defaultDifficulty} // Pass current game difficulty
+                                initialDifficulty={defaultDifficulty} 
                                 onFormSubmitted={() => { }}
                             />
                         </div>
@@ -799,3 +808,4 @@ const GameScreen: FC<GameScreenProps> = ({
 };
 
 export default GameScreen;
+
