@@ -43,7 +43,11 @@ const generateLevelPrompt = ai.definePrompt({
   output: {schema: GenerateLevelOutputSchema},
   prompt: `You are an expert game level designer specializing in 2D platformer levels with an 8-bit retro aesthetic.
 
-  Your task is to generate level data in JSON format based on the provided specifications. The level should be designed to be challenging, fun, ALWAYS SOLVABLE, and introduce a good degree of randomness and unpredictability.
+  Your task is to generate level data in JSON format based on the provided specifications.
+  The overall challenge and complexity of the level (e.g., precision of jumps, complexity of platform interactions, timing requirements for dynamic platforms) should directly correspond to the input 'Difficulty: {{{difficulty}}}'.
+  For 'hard' difficulty, incorporate more challenging sequences that require precise player actions and masterful use of abilities, while still ensuring the level is ALWAYS SOLVABLE. Think about combining different platform types in tricky ways.
+  For 'easy' difficulty, be more forgiving with jump distances, platform stability, and the complexity of sequences.
+  All levels should be fun and introduce a good degree of randomness and unpredictability.
 
   Player Capabilities for Design Reference:
   - Maximum jump height: Approximately 80-85 units.
@@ -55,20 +59,19 @@ const generateLevelPrompt = ai.definePrompt({
   1.  **Solvability is Paramount**: Ensure there is always a clear and traversable path from the first platform to the very last platform. Every jump must be possible. Test this mentally. This includes considering the full movement cycle of dynamic platforms.
   2.  **Platform Placement - Dynamic and Unpredictable**:
       *   **Randomized Layouts**: Strive for a high degree of randomness and unpredictability in the overall platform layout. Avoid overly linear or repetitive patterns.
-      *   **Varied Gaps & Heights with Wider Horizontal Tendency**: While respecting the player's jump capabilities (max height ~80-85, max horizontal ~100-120), explore varied and surprising vertical and horizontal distances between platforms. Aim for somewhat wider average horizontal gaps to create more challenging horizontal jumps. Create a mix of easier and more challenging jumps, including those that test the player's maximum horizontal reach, but always ensure a safe landing and solvability. **When designing jumps involving dynamic platforms (mobile, timed, breakable), mentally simulate the player's interaction. Crucially, for jumps to or from a mobile platform, ensure the jump is possible even if the mobile platform is at its furthest point in its movement cycle relative to the player's jump attempt. The design must account for waiting for platform cycles.** Don't be afraid to use the full extent of the player's jump abilities to create dynamic ascents, descents, and traverses. Think about how the player might need to combine jumps or use momentum.
+      *   **Varied Gaps & Heights with Wider Horizontal Tendency**: While respecting the player's jump capabilities (max height ~80-85, max horizontal ~100-120), explore varied and surprising vertical and horizontal distances between platforms. Aim for somewhat wider average horizontal gaps to create more challenging horizontal jumps, especially for 'medium' and 'hard' difficulties. Create a mix of easier and more challenging jumps, including those that test the player's maximum horizontal reach, but always ensure a safe landing and solvability. **When designing jumps involving dynamic platforms (mobile, timed, breakable), mentally simulate the player's interaction. Crucially, for jumps to or from a mobile platform, ensure the jump is possible even if the mobile platform is at its furthest point in its movement cycle relative to the player's jump attempt. The design must account for waiting for platform cycles.** Don't be afraid to use the full extent of the player's jump abilities to create dynamic ascents, descents, and traverses. Think about how the player might need to combine jumps or use momentum.
       *   **Starting Platform**: The first platform MUST be of type "standard" and placed at a reasonable starting height (e.g., y: 100-150 from the top, assuming y increases downwards) and position (e.g. x:0).
       *   **Ending Platform**: The final platform in the sequence (rightmost) MUST also be of type "standard" and be safely reachable.
   3.  **Platform Types - Creative Combinations**:
       *   Incorporate a variety of platform types: 'standard', 'mobile' (moves horizontally), 'vertical_mobile' (moves vertically), 'timed', 'breakable'.
-      *   Distribute these types thoughtfully AND with an element of surprise to create interesting, varied, and sometimes unexpected challenges. Avoid long sequences of the same platform type unless it serves a specific, compelling design purpose. Consider how different platform types can interact with each other or require different player skills. **Ensure that the dynamic behavior of these platforms does not inadvertently create unsolvable traps. For instance, a mobile platform forming a critical bridge should always allow passage eventually (considering its full cycle), and timed platforms in a necessary sequence should have synchronized or forgiving cycles. Breakable platforms, if critical, should not lead to immediate dead ends without a very quick respawn or clear alternative path.**
+      *   Distribute these types thoughtfully AND with an element of surprise to create interesting, varied, and sometimes unexpected challenges, adjusting frequency and complexity based on the 'Difficulty: {{{difficulty}}}'. For 'hard' levels, combine these in more intricate ways. Avoid long sequences of the same platform type unless it serves a specific, compelling design purpose. Consider how different platform types can interact with each other or require different player skills. **Ensure that the dynamic behavior of these platforms does not inadvertently create unsolvable traps. For instance, a mobile platform forming a critical bridge should always allow passage eventually (considering its full cycle), and timed platforms in a necessary sequence should have synchronized or forgiving cycles. Breakable platforms, if critical, should not lead to immediate dead ends without a very quick respawn or clear alternative path.**
   4.  **Platform Patterns - Structured Sequences**:
-      *   In addition to random placement, consider incorporating distinct platform patterns to add structure and variety. These patterns should be interspersed with more random platform placements.
-      *   For example, you could generate sequences of 'ascending stairs' (platforms gradually increasing in Y and X, forming a climbable staircase) or 'descending stairs'. Each step in a stair pattern should be a manageable jump.
+      *   In addition to random placement, consider incorporating distinct platform patterns to add structure and variety, such as 'ascending stairs' (platforms gradually increasing in Y and X) or 'descending stairs'. These patterns should be interspersed with more random platform placements and their frequency/complexity can vary with difficulty.
       *   These patterns should serve as interesting segments within a generally unpredictable level, not dominate the entire design.
       *   Even when generating patterns like stairs, ensure each step and the transition into and out of the pattern is solvable and fits the player's jump capabilities.
   5.  **Obstacles (Optional, consider placement if generated)**:
       *   If you include obstacles like 'spikes' or 'enemy', they should have 'width' and 'height' properties.
-      *   Place obstacles thoughtfully. They should increase difficulty but not make the level unsolvable or overly frustrating. Avoid placing obstacles directly on critical jump paths without alternatives. Consider placing them in less obvious spots if the obstacle density allows for it.
+      *   Place obstacles thoughtfully. They should increase difficulty but not make the level unsolvable or overly frustrating. Avoid placing obstacles directly on critical jump paths without alternatives. Consider placing them in less obvious spots if the obstacle density allows for it. The frequency and danger of obstacles should scale with 'Difficulty: {{{difficulty}}}'.
 
   Input Specifications:
   - Difficulty: {{{difficulty}}}
@@ -94,7 +97,7 @@ const generateLevelPrompt = ai.definePrompt({
       {"type": "enemy", "x": 280, "y": 135, "width": 15, "height": 15}
     ]
   }
-  Remember, the "obstacles" array is optional and might be empty, especially for lower obstacle densities. Focus on creative, solvable, and somewhat unpredictable platform arrangements with a tendency towards challenging horizontal jumps and the occasional structured pattern like stairs.
+  Remember, the "obstacles" array is optional and might be empty, especially for lower obstacle densities. Focus on creative, solvable, and somewhat unpredictable platform arrangements with a tendency towards challenging horizontal jumps and the occasional structured pattern like stairs, all while respecting the overall 'Difficulty: {{{difficulty}}}'.
   Your output must be ONLY the JSON string.
   `,
 });
