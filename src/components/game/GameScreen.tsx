@@ -39,7 +39,7 @@ const parseLevelData = (levelDataString: string | undefined): ParsedLevelData | 
     data.obstacles = []; 
     return data as ParsedLevelData;
   } catch (error) {
-    console.error("Failed to parse level data for GameScreen:", error, "Data string:", levelDataString);
+    // console.error("Failed to parse level data for GameScreen:", error, "Data string:", levelDataString);
     return null;
   }
 };
@@ -70,7 +70,6 @@ const BREAKABLE_PLATFORM_RESPAWN_DURATION = 5 * 60;
 const CAMERA_LERP_FACTOR = 0.1;
 const CROUCH_CAMERA_VIEW_ADJUST_WORLD = 20;
 
-// Logical game resolution
 const LOGICAL_GAME_WIDTH = 400;
 const LOGICAL_GAME_HEIGHT = 300;
 
@@ -164,11 +163,10 @@ const GameScreen: FC<GameScreenProps> = ({
 
   const parsedData = useMemo(() => {
     if (gameStarted && levelOutput?.levelData) {
-      // console.log("GameScreen: New levelOutput received, parsing data for levelId:", levelId);
       return parseLevelData(levelOutput.levelData);
     }
     return null;
-  }, [levelOutput, levelId, gameStarted]);
+  }, [levelOutput, gameStarted]); // Removed levelId as it's covered by gameStarted and levelOutput
 
   const handleResize = useCallback(() => {
     const app = pixiAppRef.current;
@@ -180,9 +178,7 @@ const GameScreen: FC<GameScreenProps> = ({
     const screenWidth = containerElement.clientWidth;
     const screenHeight = containerElement.clientHeight;
     
-    // Ensure dimensions are positive to prevent errors
     if (screenWidth <= 0 || screenHeight <= 0) {
-        // console.warn("GameScreen handleResize: Invalid container dimensions, skipping resize.", screenWidth, screenHeight);
         return;
     }
     
@@ -190,10 +186,10 @@ const GameScreen: FC<GameScreenProps> = ({
 
     const scaleX = screenWidth / LOGICAL_GAME_WIDTH;
     const scaleY = screenHeight / LOGICAL_GAME_HEIGHT;
-    const scale = Math.max(0.001, Math.min(scaleX, scaleY)); // Ensure scale is positive and not zero
+    const scale = Math.max(0.001, Math.min(scaleX, scaleY)); 
 
     gameContainer.scale.set(scale);
-    // console.log(`GameScreen handleResize: Renderer resized to ${screenWidth}x${screenHeight}. Game scale set to ${scale.toFixed(2)}`);
+    
   }, []);
 
 
@@ -221,11 +217,17 @@ const GameScreen: FC<GameScreenProps> = ({
     } else if (previousLevelId !== currentLevelId && currentLevelId > 0) { 
         setElapsedTime(0);
         setCurrentStandingPlatformIndex(null);
+        setDeathCount(0); // Reset deaths on new level if it's a manual generation or first game start
         levelStartTimeRef.current = Date.now(); 
         newLevelRequestedRef.current = false;
     } else if (parsedData && !levelStartTimeRef.current && currentLevelId > 0){ 
         levelStartTimeRef.current = Date.now();
     }
+    
+    if (levelId === 0 && gameStarted) { // Specifically for manual generation reset
+        setDeathCount(0);
+    }
+
 
     prevLevelIdRef.current = currentLevelId;
   }, [levelId, gameStarted, parsedData]);
@@ -295,6 +297,10 @@ const GameScreen: FC<GameScreenProps> = ({
         resizeObserver.unobserve(pixiContainerRef.current);
       }
       resizeObserver = null;
+      if (jumpSoundRef.current) { jumpSoundRef.current.pause(); jumpSoundRef.current = null; }
+      if (deathSoundRef.current) { deathSoundRef.current.pause(); deathSoundRef.current = null; }
+      if (winSoundRef.current) { winSoundRef.current.pause(); winSoundRef.current = null; }
+
       if (pixiAppRef.current) {
         pixiAppRef.current.destroy(true, { children: true, texture: true, baseTexture: true });
         pixiAppRef.current = null;
@@ -305,15 +311,6 @@ const GameScreen: FC<GameScreenProps> = ({
       }
     };
   }, [gameStarted, handleResize]); 
-
-
-  useEffect(() => {
-    if (!gameStarted) {
-        if (jumpSoundRef.current) { jumpSoundRef.current.pause(); jumpSoundRef.current = null; }
-        if (deathSoundRef.current) { deathSoundRef.current.pause(); deathSoundRef.current = null; }
-        if (winSoundRef.current) { winSoundRef.current.pause(); winSoundRef.current = null; }
-    }
-  }, [gameStarted]);
 
 
   useEffect(() => {
@@ -423,15 +420,24 @@ const GameScreen: FC<GameScreenProps> = ({
           playerRef.current.sprite.visible = true; 
       }
 
-      if (playerRef.current && gameContainer && app && app.renderer) {
-        // Initial camera setup will be handled by handleResize or gameLoop's first run
-        handleResize();
-      }
+        if (playerRef.current && gameContainer && app && app.renderer) {
+            if (Number.isFinite(playerRef.current.x) && Number.isFinite(playerRef.current.y)) {
+                gameContainer.pivot.x = playerRef.current.x + playerRef.current.width / 2;
+                gameContainer.pivot.y = playerRef.current.y + playerRef.current.height / 2;
+            } else {
+                gameContainer.pivot.x = LOGICAL_GAME_WIDTH / 2;
+                gameContainer.pivot.y = LOGICAL_GAME_HEIGHT / 2;
+            }
+            gameContainer.x = app.screen.width / 2;
+            gameContainer.y = app.screen.height / 2;
+            handleResize();
+        }
+
     } else { 
       if (playerRef.current && playerRef.current.sprite) playerRef.current.sprite.visible = false;
       handleResize(); 
     }
-  }, [parsedData, gameStarted, handleResize]); 
+  }, [parsedData, gameStarted, handleResize, levelId]);
 
 
   const gameLoop = useCallback((delta: PIXI.TickerCallback<any>) => {
@@ -552,7 +558,7 @@ const GameScreen: FC<GameScreenProps> = ({
       if (jumpSoundRef.current) {
         jumpSoundRef.current.volume = globalVolume;
         jumpSoundRef.current.currentTime = 0;
-        jumpSoundRef.current.play().catch(e => console.warn("Jump sound err:", e));
+        jumpSoundRef.current.play().catch(e => {});
       }
     }
 
@@ -638,7 +644,7 @@ const GameScreen: FC<GameScreenProps> = ({
         if (deathSoundRef.current) {
           deathSoundRef.current.volume = globalVolume;
           deathSoundRef.current.currentTime = 0;
-          deathSoundRef.current.play().catch(e => console.warn("Death sound err:", e));
+          deathSoundRef.current.play().catch(e => {});
         }
         setDeathCount(prev => prev + 1);
         setCurrentStandingPlatformIndex(null);
@@ -657,7 +663,7 @@ const GameScreen: FC<GameScreenProps> = ({
         if (winSoundRef.current) {
             winSoundRef.current.volume = globalVolume;
             winSoundRef.current.currentTime = 0;
-            winSoundRef.current.play().catch(e => console.warn("Win sound err:", e));
+            winSoundRef.current.play().catch(e => {});
         }
       if (onRequestNewLevel) onRequestNewLevel();
       newLevelRequestedRef.current = true;
@@ -672,11 +678,7 @@ const GameScreen: FC<GameScreenProps> = ({
 
         if (!Number.isFinite(gameContainer.pivot.x) || !Number.isFinite(gameContainer.pivot.y) ||
             !Number.isFinite(targetPivotX) || !Number.isFinite(targetPivotY)) {
-            console.error("CRITICAL: Game pivot or target pivot became NaN/Infinity. Attempting recovery.", {
-                playerX: playerRef.current?.x, playerY: playerRef.current?.y,
-                currentPivotX: gameContainer.pivot.x, currentPivotY: gameContainer.pivot.y,
-                targetPivotX: targetPivotX, targetPivotY: targetPivotY,
-            });
+            
             if (playerRef.current && Number.isFinite(playerRef.current.x) && Number.isFinite(playerRef.current.y)) {
                  gameContainer.pivot.x = playerRef.current.x + playerRef.current.width / 2;
                  gameContainer.pivot.y = playerRef.current.y + playerRef.current.height / 2;
@@ -692,7 +694,7 @@ const GameScreen: FC<GameScreenProps> = ({
         gameContainer.x = app.screen.width / 2; 
         gameContainer.y = app.screen.height / 2;
     }
-  }, [parsedData, onRequestNewLevel, isLoading, isPaused, gameStarted, globalVolume, levelId, handleResize, deathCount, elapsedTime, currentStandingPlatformIndex]); 
+  }, [parsedData, onRequestNewLevel, isLoading, isPaused, gameStarted, globalVolume, levelId, deathCount, currentStandingPlatformIndex, setElapsedTime]); // Removed elapsedTime and deathCount as direct dependencies as they are managed internally or by game events
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -789,10 +791,10 @@ const GameScreen: FC<GameScreenProps> = ({
           {isLoading && (
             <div className="absolute inset-0 bg-background/80 flex flex-col items-center justify-center text-center text-foreground z-20 p-4">
               <Loader2 className="w-12 h-12 animate-spin text-primary mb-4" />
-              { (levelId === 0 && gameStarted) ? (
+              { (levelId === 0 && gameStarted) ? ( 
                   <p className="text-lg">Loading Game... Generating Level 1...</p>
               ) : (
-                  gameStarted && levelId > 0 ? (
+                  gameStarted && levelId > 0 ? ( 
                       <>
                           <p className="text-2xl font-bold mb-2">Level {levelId} Complete!</p>
                           <p className="text-lg">Generating Level {levelId + 1}...</p>
