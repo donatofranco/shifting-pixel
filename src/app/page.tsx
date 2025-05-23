@@ -23,7 +23,7 @@ export default function HomePage() {
     console.log(`HomePage: Attempting to generate Level ${targetLevelNumber} with difficulty:`, difficulty);
 
     try {
-      const result = await handleGenerateLevelAction({ difficulty }); // Pass only difficulty
+      const result = await handleGenerateLevelAction({ difficulty });
       if ('error' in result) {
         console.error(`HomePage: Generation failed for Level ${targetLevelNumber}:`, result.error);
         toast({
@@ -32,12 +32,12 @@ export default function HomePage() {
           description: result.error || "An unknown error occurred.",
         });
         setGeneratedLevel(null);
-        if (isInitialStart) setGameStarted(false); // Revert gameStarted if initial load fails
+        if (isInitialStart) setGameStarted(false); 
       } else {
         console.log(`HomePage: Level ${targetLevelNumber} generated successfully.`);
         setGeneratedLevel(result);
         setLevelCount(targetLevelNumber);
-        setCurrentDifficulty(difficulty); // Update current difficulty
+        setCurrentDifficulty(difficulty); 
         toast({
           title: `Level ${targetLevelNumber} Generated!`,
           description: isInitialStart ? "Let the adventure begin!" : `Difficulty: ${difficulty}. The adventure continues.`,
@@ -59,7 +59,7 @@ export default function HomePage() {
 
   const handleStartGame = useCallback((difficulty: GenerateLevelInput['difficulty']) => {
     setGameStarted(true);
-    setLevelCount(0); // Reset level count, triggerLevelGeneration will set it to 1
+    setLevelCount(0); 
     triggerLevelGeneration(difficulty, true);
   }, [triggerLevelGeneration]);
 
@@ -69,7 +69,6 @@ export default function HomePage() {
     setLevelCount(0); 
 
     try {
-      // Directly use formData which only contains difficulty
       const result = await handleGenerateLevelAction(formData); 
       if ('error' in result) {
         console.error("HomePage: Manual generation failed:", result.error);
@@ -83,7 +82,7 @@ export default function HomePage() {
         console.log("HomePage: Manual level generated successfully.");
         setGeneratedLevel(result);
         setLevelCount(1); 
-        setCurrentDifficulty(formData.difficulty); // Update current difficulty
+        setCurrentDifficulty(formData.difficulty); 
         toast({
           title: "Level 1 Generated Manually!",
           description: `Difficulty: ${formData.difficulty}. The new adventure begins.`,
@@ -114,10 +113,10 @@ export default function HomePage() {
         nextDifficulty = 'hard';
         break;
       case 'hard':
-        nextDifficulty = 'hard'; // Cap at hard
+        nextDifficulty = 'hard'; 
         break;
       default:
-        nextDifficulty = 'medium'; // Fallback
+        nextDifficulty = 'medium'; 
     }
     
     console.log(`HomePage: Requesting Level ${levelCount + 1} with next difficulty: ${nextDifficulty}`);
@@ -129,20 +128,20 @@ export default function HomePage() {
       setIsLoadingLevel(false);
       setGeneratedLevel(null); 
       setLevelCount(0); 
-      setCurrentDifficulty(INITIAL_DIFFICULTY); // Reset difficulty on game end/reset
+      setCurrentDifficulty(INITIAL_DIFFICULTY); 
     }
   }, [gameStarted]);
 
   return (
-    <div className="h-full flex flex-col bg-background text-foreground selection:bg-primary selection:text-primary-foreground">
-      <main className="flex-grow flex flex-col">
+    <div className="h-full flex flex-col selection:bg-primary selection:text-primary-foreground overflow-hidden"> {/* Added overflow-hidden */}
+      <main className="flex-grow flex flex-col min-h-0"> {/* Added min-h-0 */}
             <GameScreen
               levelOutput={generatedLevel}
               onRequestNewLevel={handleRequestNewLevel}
               levelId={levelCount}
               isLoading={isLoadingLevel}
               onManualGenerateRequested={processManualLevelGeneration}
-              defaultDifficulty={currentDifficulty} // Pass currentDifficulty for the form
+              defaultDifficulty={currentDifficulty}
               gameStarted={gameStarted}
               onStartGame={handleStartGame}
             />
