@@ -10,7 +10,6 @@ function getRandomInt(min: number, max: number): number {
 }
 
 export async function handleGenerateLevelAction(
-  // The form now only sends difficulty
   input: Pick<GenerateLevelInput, 'difficulty'>
 ): Promise<GenerateLevelOutput | { error: string }> {
   
@@ -45,16 +44,26 @@ export async function handleGenerateLevelAction(
   }
 
   try {
-    console.log("Generating level with derived input:", fullInput);
+    console.log("Generating level with derived input:", fullInput); // For server-side debugging
     const result = await generateLevel(fullInput);
-    console.log("Level generated successfully:", result);
+    console.log("Level generated successfully (or AI returned an error object):", result); // For server-side debugging
+     if (!result || typeof result.levelData !== 'string' || result.levelData.trim() === '') {
+      // This case might occur if the AI returns a valid structure but empty or malformed levelData
+      console.error("Error generating level: AI returned invalid levelData.", result);
+      return { error: "AI returned invalid level data. Please try again." };
+    }
     return result;
   } catch (error) {
-    console.error("Error generating level:", error);
-    let errorMessage = "Failed to generate level. Please try again.";
+    console.error("Error in handleGenerateLevelAction:", error); // For server-side debugging
+    let errorMessage = "Failed to generate level due to an unexpected server error.";
     if (error instanceof Error) {
       errorMessage = error.message;
+    } else if (typeof error === 'string') {
+      errorMessage = error;
+    } else if (error && typeof error === 'object' && 'toString' in error) {
+      errorMessage = (error as {toString: () => string}).toString();
     }
     return { error: errorMessage };
   }
 }
+

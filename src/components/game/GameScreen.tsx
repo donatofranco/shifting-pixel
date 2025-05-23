@@ -36,7 +36,8 @@ const parseLevelData = (levelDataString: string | undefined): ParsedLevelData | 
      if (!trimmedData) return null;
     const data = JSON.parse(trimmedData);
     if (!data.platforms || !Array.isArray(data.platforms)) data.platforms = [];
-    data.obstacles = []; 
+    // data.obstacles = []; // Obstacles are intentionally ignored for rendering now
+    if (!data.obstacles || !Array.isArray(data.obstacles)) data.obstacles = [];
     return data as ParsedLevelData;
   } catch (error) {
     // console.error("Failed to parse level data for GameScreen:", error, "Data string:", levelDataString);
@@ -166,7 +167,7 @@ const GameScreen: FC<GameScreenProps> = ({
       return parseLevelData(levelOutput.levelData);
     }
     return null;
-  }, [levelOutput, gameStarted]); // Removed levelId as it's covered by gameStarted and levelOutput
+  }, [levelOutput, gameStarted]);
 
   const handleResize = useCallback(() => {
     const app = pixiAppRef.current;
@@ -207,9 +208,7 @@ const GameScreen: FC<GameScreenProps> = ({
     }
     
     if (currentLevelId === 0 ) { 
-        if (previousLevelId === -1 || previousLevelId === undefined || currentLevelId !== previousLevelId ) { 
-            setDeathCount(0);
-        }
+        setDeathCount(0);
         setElapsedTime(0);
         setCurrentStandingPlatformIndex(null);
         levelStartTimeRef.current = parsedData ? Date.now() : null; 
@@ -217,14 +216,16 @@ const GameScreen: FC<GameScreenProps> = ({
     } else if (previousLevelId !== currentLevelId && currentLevelId > 0) { 
         setElapsedTime(0);
         setCurrentStandingPlatformIndex(null);
-        setDeathCount(0); // Reset deaths on new level if it's a manual generation or first game start
+        if(currentLevelId === 1 && previousLevelId === 0) { // Reset deaths only when starting game or manual generation
+             setDeathCount(0);
+        }
         levelStartTimeRef.current = Date.now(); 
         newLevelRequestedRef.current = false;
     } else if (parsedData && !levelStartTimeRef.current && currentLevelId > 0){ 
         levelStartTimeRef.current = Date.now();
     }
     
-    if (levelId === 0 && gameStarted) { // Specifically for manual generation reset
+    if (levelId === 0 && gameStarted && parsedData) { 
         setDeathCount(0);
     }
 
@@ -245,9 +246,10 @@ const GameScreen: FC<GameScreenProps> = ({
       }
       return;
     }
-
+    
     if (pixiAppRef.current) { 
-      handleResize(); 
+      // If app exists, just ensure resize is called if needed, e.g. on orientation change
+      // handleResize might be called from elsewhere, or we could add a listener for orientation change
       return;
     }
     
@@ -437,7 +439,7 @@ const GameScreen: FC<GameScreenProps> = ({
       if (playerRef.current && playerRef.current.sprite) playerRef.current.sprite.visible = false;
       handleResize(); 
     }
-  }, [parsedData, gameStarted, handleResize, levelId]);
+  }, [parsedData, gameStarted, handleResize]);
 
 
   const gameLoop = useCallback((delta: PIXI.TickerCallback<any>) => {
@@ -456,8 +458,11 @@ const GameScreen: FC<GameScreenProps> = ({
 
 
     if (levelStartTimeRef.current && !isPaused && (levelId > 0 || (levelId === 0 && parsedData && gameStarted))) {
-        const currentTime = (Date.now() - levelStartTimeRef.current) / 1000;
-        setElapsedTime(currentTime);
+        const newCurrentTime = (Date.now() - levelStartTimeRef.current) / 1000;
+        // Throttle React state updates for elapsedTime
+        if (Math.abs(newCurrentTime - elapsedTime) > 0.05) { // Update ~20 times per second
+            setElapsedTime(newCurrentTime);
+        }
     }
 
     platformObjectsRef.current.forEach(pObj => {
@@ -646,7 +651,7 @@ const GameScreen: FC<GameScreenProps> = ({
           deathSoundRef.current.currentTime = 0;
           deathSoundRef.current.play().catch(e => {});
         }
-        setDeathCount(prev => prev + 1);
+        setDeathCount(prev => prev + 1); // Use functional update
         setCurrentStandingPlatformIndex(null);
 
         if (platformObjectsRef.current.length > 0) {
@@ -694,7 +699,7 @@ const GameScreen: FC<GameScreenProps> = ({
         gameContainer.x = app.screen.width / 2; 
         gameContainer.y = app.screen.height / 2;
     }
-  }, [parsedData, onRequestNewLevel, isLoading, isPaused, gameStarted, globalVolume, levelId, deathCount, currentStandingPlatformIndex, setElapsedTime]); // Removed elapsedTime and deathCount as direct dependencies as they are managed internally or by game events
+  }, [parsedData, onRequestNewLevel, isLoading, isPaused, gameStarted, globalVolume, levelId, elapsedTime, setElapsedTime, setCurrentStandingPlatformIndex, setDeathCount]); 
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {

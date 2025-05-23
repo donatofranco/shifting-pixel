@@ -59,7 +59,7 @@ const generateLevelPrompt = ai.definePrompt({
   1.  **Solvability is Paramount**: Ensure there is always a clear and traversable path from the first platform to the very last platform. Every jump must be possible. Test this mentally. This includes considering the full movement cycle of dynamic platforms.
   2.  **Platform Placement - Dynamic and Unpredictable**:
       *   **Randomized Layouts**: Strive for a high degree of randomness and unpredictability in the overall platform layout. Avoid overly linear or repetitive patterns.
-      *   **Varied Gaps & Heights with Wider Horizontal Tendency**: While respecting the player's jump capabilities (max height ~80-85, max horizontal ~100-120), explore varied and surprising vertical and horizontal distances between platforms. Aim for somewhat wider average horizontal gaps to create more challenging horizontal jumps, especially for 'medium' and 'hard' difficulties. Create a mix of easier and more challenging jumps, including those that test the player's maximum horizontal reach, but always ensure a safe landing and solvability. **When designing jumps involving dynamic platforms (mobile, timed, breakable), mentally simulate the player's interaction. Crucially, for jumps to or from a mobile platform, ensure the jump is possible even if the mobile platform is at its furthest point in its movement cycle relative to the player's jump attempt. The design must account for waiting for platform cycles.** Don't be afraid to use the full extent of the player's jump abilities to create dynamic ascents, descents, and traverses. Think about how the player might need to combine jumps or use momentum.
+      *   **Varied Gaps & Heights with Wider Horizontal Tendency**: While respecting the player's jump capabilities (max height ~80-85, max horizontal ~100-120), explore varied and surprising vertical and horizontal distances between platforms. Aim for somewhat wider average horizontal gaps to create more challenging horizontal jumps, especially for 'medium' and 'hard' difficulties. Create a mix of easier and more challenging jumps, including those that test the player's maximum horizontal reach, but always ensure a safe landing and solvability. **When designing jumps involving dynamic platforms (mobile, vertical_mobile, timed, breakable), mentally simulate the player's interaction. Crucially, for jumps to or from a mobile platform, ensure the jump is possible even if the mobile platform is at its furthest point in its movement cycle relative to the player's jump attempt. The design must account for waiting for platform cycles.** Don't be afraid to use the full extent of the player's jump abilities to create dynamic ascents, descents, and traverses. Think about how the player might need to combine jumps or use momentum.
       *   **Starting Platform**: The first platform MUST be of type "standard" and placed at a reasonable starting height (e.g., y: 100-150 from the top, assuming y increases downwards) and position (e.g. x:0).
       *   **Ending Platform**: The final platform in the sequence (rightmost) MUST also be of type "standard" and be safely reachable.
   3.  **Platform Types - Creative Combinations**:
@@ -111,9 +111,14 @@ const generateLevelFlow = ai.defineFlow(
   },
   async input => {
     const {output} = await generateLevelPrompt(input);
-    // We could add a trim() here just in case, but ideally the model respects the prompt.
-    // For example: if (output && output.levelData) output.levelData = output.levelData.trim();
-    return output!;
+    // Ensure levelData is trimmed if it's a string
+    if (output && typeof output.levelData === 'string') {
+      output.levelData = output.levelData.trim();
+    }
+    if (!output) {
+      throw new Error("AI failed to generate level data.");
+    }
+    return output;
   }
 );
 
