@@ -8,13 +8,14 @@ import type { GenerateLevelOutput, GenerateLevelInput } from '@/ai/flows/generat
 import type { ParsedLevelData, Platform as PlatformData } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from '@/components/ui/dialog';
-import { Loader2, TimerIcon, PauseIcon, PlayIcon, SlidersHorizontal, Volume2, ListTree, Footprints } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Loader2, TimerIcon, PauseIcon, PlayIcon, SlidersHorizontal, Volume2, ListTree, Footprints, ArrowUp, ArrowDown, ArrowLeft, ArrowRight } from 'lucide-react';
 import LevelGeneratorForm from '@/components/game/LevelGeneratorForm';
 import ControlsGuide from '@/components/game/ControlsGuide';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 
 interface GameScreenProps {
@@ -33,9 +34,12 @@ const parseLevelData = (levelDataString: string | undefined): ParsedLevelData | 
   try {
     const trimmedData = levelDataString.trim();
      if (!trimmedData) return null;
+    // Ensure the model output is ONLY the JSON string.
+    // For very robust parsing, one might consider finding the first '{' and last '}'
+    // and parsing only that substring, but ideally the model respects the prompt.
     const data = JSON.parse(trimmedData);
     if (!data.platforms || !Array.isArray(data.platforms)) data.platforms = [];
-    data.obstacles = [];
+    data.obstacles = []; 
     return data as ParsedLevelData;
   } catch (error) {
     console.error("Failed to parse level data for GameScreen:", error, "Data string:", levelDataString);
@@ -51,23 +55,23 @@ const JUMP_FORCE = 7;
 const GRAVITY = 0.3;
 const DEFAULT_PLATFORM_HEIGHT = 10;
 
-const PLATFORM_COLOR_STANDARD = 0x9400D3;
-const PLATFORM_COLOR_MOBILE = 0x0077FF;
-const PLATFORM_COLOR_VERTICAL_MOBILE = 0x00D377;
-const PLATFORM_COLOR_TIMED = 0xFF8C00;
-const PLATFORM_COLOR_BREAKABLE = 0x8B4513;
+const PLATFORM_COLOR_STANDARD = 0x9400D3; // Dark Purple
+const PLATFORM_COLOR_MOBILE = 0x0077FF; // Blue
+const PLATFORM_COLOR_VERTICAL_MOBILE = 0x00D377; // Green-Blue
+const PLATFORM_COLOR_TIMED = 0xFF8C00; // Orange
+const PLATFORM_COLOR_BREAKABLE = 0x8B4513; // Brown
 
-const PLAYER_COLOR = 0xFFDE00;
+const PLAYER_COLOR = 0xFFDE00; // Yellow
 
 const DEFAULT_PLATFORM_MOVE_SPEED = 0.5;
 const DEFAULT_PLATFORM_MOVE_RANGE = 50;
-const TIMED_PLATFORM_VISIBLE_DURATION = 3 * 60;
-const TIMED_PLATFORM_HIDDEN_DURATION = 2 * 60;
-const BREAKABLE_PLATFORM_BREAK_DELAY = 0.5 * 60;
-const BREAKABLE_PLATFORM_RESPAWN_DURATION = 5 * 60;
+const TIMED_PLATFORM_VISIBLE_DURATION = 3 * 60; // 3 seconds at 60fps
+const TIMED_PLATFORM_HIDDEN_DURATION = 2 * 60;  // 2 seconds at 60fps
+const BREAKABLE_PLATFORM_BREAK_DELAY = 0.5 * 60; // 0.5 seconds at 60fps
+const BREAKABLE_PLATFORM_RESPAWN_DURATION = 5 * 60; // 5 seconds at 60fps
 
 const CAMERA_LERP_FACTOR = 0.1;
-const DESIRED_GAME_SCALE = 2.5;
+const DESIRED_GAME_SCALE = 2.5; 
 const CROUCH_CAMERA_VIEW_ADJUST_WORLD = 20;
 
 
@@ -130,6 +134,7 @@ const GameScreen: FC<GameScreenProps> = ({
   const [globalVolume, setGlobalVolume] = useState<number>(1);
   const [currentStandingPlatformIndex, setCurrentStandingPlatformIndex] = useState<number | null>(null);
 
+  const isMobile = useIsMobile();
 
   const jumpSoundRef = useRef<HTMLAudioElement | null>(null);
   const deathSoundRef = useRef<HTMLAudioElement | null>(null);
@@ -177,14 +182,14 @@ const GameScreen: FC<GameScreenProps> = ({
         newLevelRequestedRef.current = false;
     }
     
-    if (currentLevelId > 0 || (currentLevelId === 0 && gameStarted && parsedData)) { // If level 0 is from manual generation
+    if (currentLevelId > 0 || (currentLevelId === 0 && gameStarted && parsedData)) { 
         setElapsedTime(0);
         levelStartTimeRef.current = Date.now();
         setCurrentStandingPlatformIndex(null);
-        if (currentLevelId === 0) { // Reset death count for manual generation start
+        if (currentLevelId === 0) {
              setDeathCount(0);
         }
-    } else if (currentLevelId === 0 && gameStarted && !parsedData) { // Initial game start, no level yet
+    } else if (currentLevelId === 0 && gameStarted && !parsedData) { 
         console.log("GameScreen: Initial game start, level 0, no parsed data yet. Resetting counters.");
         setElapsedTime(0);
         setDeathCount(0);
@@ -213,7 +218,7 @@ const GameScreen: FC<GameScreenProps> = ({
       return;
     }
 
-    if (pixiAppRef.current) return; // Don't re-init if app already exists
+    if (pixiAppRef.current) return; 
 
     if (PIXI.TextureSource && PIXI.SCALE_MODES) {
         PIXI.TextureSource.defaultOptions.scaleMode = PIXI.SCALE_MODES.NEAREST;
@@ -270,7 +275,7 @@ const GameScreen: FC<GameScreenProps> = ({
         console.log("GameScreen: PixiJS app destroyed on cleanup.");
       }
     };
-  }, [gameStarted]); // Only depends on gameStarted for initial setup/cleanup
+  }, [gameStarted]);
 
 
   useEffect(() => {
@@ -409,7 +414,7 @@ const GameScreen: FC<GameScreenProps> = ({
     }
     if (player.sprite) player.sprite.visible = true;
 
-    if (levelStartTimeRef.current && (levelId > 0 || (levelId === 0 && parsedData))) { // Also update time if level 0 from manual gen
+    if (levelStartTimeRef.current && (levelId > 0 || (levelId === 0 && parsedData))) {
         const currentTime = (Date.now() - levelStartTimeRef.current) / 1000;
         setElapsedTime(currentTime);
     }
@@ -552,7 +557,7 @@ const GameScreen: FC<GameScreenProps> = ({
         const playerVRect = { x: player.x, y: player.y, width: player.width, height: player.height };
         if (checkCollision(playerVRect, pRect)) {
             if (player.vy > 0) {
-                if (prevPlayerY + player.height <= pRect.y + 1) {
+                if (prevPlayerY + player.height <= pRect.y + 1) { // +1 for a small tolerance
                     player.y = pRect.y - player.height; player.vy = 0; player.isJumping = false; player.onGround = true;
                     player.standingOnPlatform = pObj;
                     const newPlatformIndex = platformObjectsRef.current.findIndex(pf => pf === pObj);
@@ -563,7 +568,7 @@ const GameScreen: FC<GameScreenProps> = ({
                     }
                 }
             } else if (player.vy < 0) {
-                if (prevPlayerY >= pRect.y + pRect.height -1 ) {
+                if (prevPlayerY >= pRect.y + pRect.height -1 ) { // -1 for a small tolerance
                     player.y = pRect.y + pRect.height; player.vy = 0;
                 }
             }
@@ -576,7 +581,7 @@ const GameScreen: FC<GameScreenProps> = ({
              const pRect = { x: p.sprite.x, y: p.sprite.y, width: p.width, height: p.height };
              const pFeetY = player.y + player.height;
              if (player.x + player.width > pRect.x && player.x < pRect.x + pRect.width &&
-                 pFeetY >= pRect.y && pFeetY < pRect.y + Math.abs(player.vy) + GRAVITY + 1) {
+                 pFeetY >= pRect.y && pFeetY < pRect.y + Math.abs(player.vy) + GRAVITY + 1) { // Adjusted tolerance
                  player.y = pRect.y - player.height; player.vy = 0; player.isJumping = false;
                  player.onGround = true; stillOn = true;
              }
@@ -592,7 +597,7 @@ const GameScreen: FC<GameScreenProps> = ({
 
     let gameWorldMaxY = 1000;
     if (parsedData && parsedData.platforms.length > 0) {
-         gameWorldMaxY = Math.max(...parsedData.platforms.map(p => p.y + DEFAULT_PLATFORM_HEIGHT)) + 200;
+         gameWorldMaxY = Math.max(...parsedData.platforms.map(p => p.y + DEFAULT_PLATFORM_HEIGHT)) + 200; // Add buffer
     }
     if (player.y > gameWorldMaxY) {
         if (deathSoundRef.current) {
@@ -650,11 +655,11 @@ const GameScreen: FC<GameScreenProps> = ({
 
     const app = pixiAppRef.current;
     if (gameStarted && app && app.ticker) {
-      app.ticker.remove(gameLoop); // Remove any existing instance
-      if (!isLoading && !isPaused) { // Only add if not loading and not paused
+      app.ticker.remove(gameLoop); 
+      if (!isLoading && !isPaused) { 
         app.ticker.add(gameLoop);
       }
-    } else if (app && app.ticker) { // If game not started, or app/ticker invalid, ensure gameLoop is removed
+    } else if (app && app.ticker) { 
         app.ticker.remove(gameLoop);
     }
 
@@ -668,12 +673,11 @@ const GameScreen: FC<GameScreenProps> = ({
   }, [gameLoop, isLoading, isPaused, gameStarted]);
 
   const handlePopoverFormSubmit = async (formData: Pick<GenerateLevelInput, 'difficulty'>) => {
-    setIsPaused(false); // Close pause menu
-    await onManualGenerateRequested(formData); // This will trigger loading state in HomePage
+    setIsPaused(false); 
+    await onManualGenerateRequested(formData); 
   };
 
   useEffect(() => {
-    // Sync start screen difficulty with defaultDifficulty from props (which comes from HomePage's currentDifficulty)
     setStartScreenDifficulty(defaultDifficulty);
   }, [defaultDifficulty]);
 
@@ -733,15 +737,15 @@ const GameScreen: FC<GameScreenProps> = ({
           {isLoading && (
             <div className="absolute inset-0 bg-background/80 flex flex-col items-center justify-center text-center text-foreground z-20 p-4">
               <Loader2 className="w-12 h-12 animate-spin text-primary mb-4" />
-              { (levelId === 0 && gameStarted) ? ( // This covers initial load after pressing start OR manual generation
+              { (levelId === 0 && gameStarted) ? (
                   <p className="text-lg">Loading Game... Generating Level 1...</p>
               ) : (
-                  gameStarted && levelId > 0 ? ( // This covers level transitions
+                  gameStarted && levelId > 0 ? (
                       <>
                           <p className="text-2xl font-bold mb-2">Level {levelId} Complete!</p>
                           <p className="text-lg">Generating Level {levelId + 1}...</p>
                       </>
-                  ) : ( // Fallback, though less likely to be hit with current logic
+                  ) : ( 
                       <p className="text-lg">Loading...</p>
                   )
               )}
@@ -774,12 +778,12 @@ const GameScreen: FC<GameScreenProps> = ({
           </CardTitle>
           <div className="flex items-center gap-1">
             <Dialog open={isPaused} onOpenChange={setIsPaused}>
-                <DialogTrigger asChild>
+                <Dialog.Trigger asChild>
                     <Button variant="ghost" size="icon" className="text-primary hover:text-primary/80" onClick={() => setIsPaused(true)}>
                         <PauseIcon className="h-6 w-6" />
                         <span className="sr-only">Pause Game</span>
                     </Button>
-                </DialogTrigger>
+                </Dialog.Trigger>
                 <DialogContent className="sm:max-w-[480px] bg-card border-primary text-foreground">
                     <DialogHeader>
                         <DialogTitle className="text-2xl text-primary uppercase tracking-wider text-center mb-4">Paused</DialogTitle>
@@ -824,10 +828,62 @@ const GameScreen: FC<GameScreenProps> = ({
             </Dialog>
           </div>
         </CardHeader>
+         {isMobile && gameStarted && !isLoading && !isPaused && (
+          <div className="absolute inset-0 pointer-events-none z-30 flex flex-col justify-end">
+            <div className="flex justify-between items-end p-4 sm:p-6 md:p-8">
+              {/* Bottom Left Controls (Jump, Crouch) */}
+              <div className="flex flex-col gap-3 pointer-events-auto">
+                <button
+                  className="bg-white/20 text-white p-4 rounded-full active:bg-white/40 shadow-lg"
+                  onTouchStart={(e) => { e.preventDefault(); keysPressedRef.current.add('Space'); }}
+                  onTouchEnd={(e) => { e.preventDefault(); keysPressedRef.current.delete('Space'); }}
+                  onMouseDown={(e) => { e.preventDefault(); keysPressedRef.current.add('Space'); }}
+                  onMouseUp={(e) => { e.preventDefault(); keysPressedRef.current.delete('Space'); }}
+                  aria-label="Jump"
+                >
+                  <ArrowUp className="w-6 h-6 sm:w-8 sm:h-8" />
+                </button>
+                <button
+                  className="bg-white/20 text-white p-4 rounded-full active:bg-white/40 shadow-lg"
+                  onTouchStart={(e) => { e.preventDefault(); keysPressedRef.current.add('KeyS'); }}
+                  onTouchEnd={(e) => { e.preventDefault(); keysPressedRef.current.delete('KeyS'); }}
+                  onMouseDown={(e) => { e.preventDefault(); keysPressedRef.current.add('KeyS'); }}
+                  onMouseUp={(e) => { e.preventDefault(); keysPressedRef.current.delete('KeyS'); }}
+                  aria-label="Crouch"
+                >
+                  <ArrowDown className="w-6 h-6 sm:w-8 sm:h-8" />
+                </button>
+              </div>
+
+              {/* Bottom Right Controls (Left, Right) */}
+              <div className="flex gap-3 pointer-events-auto">
+                <button
+                  className="bg-white/20 text-white p-4 rounded-full active:bg-white/40 shadow-lg"
+                  onTouchStart={(e) => { e.preventDefault(); keysPressedRef.current.add('KeyA'); }}
+                  onTouchEnd={(e) => { e.preventDefault(); keysPressedRef.current.delete('KeyA'); }}
+                  onMouseDown={(e) => { e.preventDefault(); keysPressedRef.current.add('KeyA'); }}
+                  onMouseUp={(e) => { e.preventDefault(); keysPressedRef.current.delete('KeyA'); }}
+                  aria-label="Move Left"
+                >
+                  <ArrowLeft className="w-6 h-6 sm:w-8 sm:h-8" />
+                </button>
+                <button
+                  className="bg-white/20 text-white p-4 rounded-full active:bg-white/40 shadow-lg"
+                  onTouchStart={(e) => { e.preventDefault(); keysPressedRef.current.add('KeyD'); }}
+                  onTouchEnd={(e) => { e.preventDefault(); keysPressedRef.current.delete('KeyD'); }}
+                  onMouseDown={(e) => { e.preventDefault(); keysPressedRef.current.add('KeyD'); }}
+                  onMouseUp={(e) => { e.preventDefault(); keysPressedRef.current.delete('KeyD'); }}
+                  aria-label="Move Right"
+                >
+                  <ArrowRight className="w-6 h-6 sm:w-8 sm:h-8" />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </Card>
     </>
   );
 };
 
 export default GameScreen;
-
