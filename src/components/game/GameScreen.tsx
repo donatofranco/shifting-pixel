@@ -8,7 +8,7 @@ import type { GenerateLevelOutput, GenerateLevelInput } from '@/ai/flows/generat
 import type { ParsedLevelData, Platform as PlatformData } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Loader2, TimerIcon, PauseIcon, PlayIcon, Gamepad2, SlidersHorizontal, Volume2, ListTree, Footprints, ArrowUp, ArrowDown, ArrowLeft, ArrowRight } from 'lucide-react';
 import LevelGeneratorForm from '@/components/game/LevelGeneratorForm';
 import ControlsGuide from '@/components/game/ControlsGuide';
@@ -34,9 +34,6 @@ const parseLevelData = (levelDataString: string | undefined): ParsedLevelData | 
   try {
     const trimmedData = levelDataString.trim();
      if (!trimmedData) return null;
-    // Ensure the model output is ONLY the JSON string.
-    // For very robust parsing, one might consider finding the first '{' and last '}'
-    // and parsing only that substring, but ideally the model respects the prompt.
     const data = JSON.parse(trimmedData);
     if (!data.platforms || !Array.isArray(data.platforms)) data.platforms = [];
     data.obstacles = []; 
@@ -55,24 +52,27 @@ const JUMP_FORCE = 7;
 const GRAVITY = 0.3;
 const DEFAULT_PLATFORM_HEIGHT = 10;
 
-const PLATFORM_COLOR_STANDARD = 0x9400D3; // Vibrant Purple
-const PLATFORM_COLOR_MOBILE = 0x0077FF; // Blue
-const PLATFORM_COLOR_VERTICAL_MOBILE = 0x00D377; // Green-Blue
-const PLATFORM_COLOR_TIMED = 0xFF8C00; // Orange
-const PLATFORM_COLOR_BREAKABLE = 0x8B4513; // Brown
+const PLATFORM_COLOR_STANDARD = 0x9400D3; 
+const PLATFORM_COLOR_MOBILE = 0x0077FF; 
+const PLATFORM_COLOR_VERTICAL_MOBILE = 0x00D377;
+const PLATFORM_COLOR_TIMED = 0xFF8C00; 
+const PLATFORM_COLOR_BREAKABLE = 0x8B4513;
 
-const PLAYER_COLOR = 0xFFDE00; // Yellow
+const PLAYER_COLOR = 0xFFDE00; 
 
 const DEFAULT_PLATFORM_MOVE_SPEED = 0.5;
 const DEFAULT_PLATFORM_MOVE_RANGE = 50;
-const TIMED_PLATFORM_VISIBLE_DURATION = 3 * 60; // 3 seconds at 60fps
-const TIMED_PLATFORM_HIDDEN_DURATION = 2 * 60;  // 2 seconds at 60fps
-const BREAKABLE_PLATFORM_BREAK_DELAY = 0.5 * 60; // 0.5 seconds at 60fps
-const BREAKABLE_PLATFORM_RESPAWN_DURATION = 5 * 60; // 5 seconds at 60fps
+const TIMED_PLATFORM_VISIBLE_DURATION = 3 * 60; 
+const TIMED_PLATFORM_HIDDEN_DURATION = 2 * 60;  
+const BREAKABLE_PLATFORM_BREAK_DELAY = 0.5 * 60; 
+const BREAKABLE_PLATFORM_RESPAWN_DURATION = 5 * 60;
 
 const CAMERA_LERP_FACTOR = 0.1;
-const DESIRED_GAME_SCALE = 2.5; 
 const CROUCH_CAMERA_VIEW_ADJUST_WORLD = 20;
+
+// Logical game resolution
+const LOGICAL_GAME_WIDTH = 400;
+const LOGICAL_GAME_HEIGHT = 300;
 
 
 function checkCollision(rect1: {x: number, y: number, width: number, height: number},
@@ -126,6 +126,7 @@ const GameScreen: FC<GameScreenProps> = ({
   const pixiContainerRef = useRef<HTMLDivElement>(null);
   const pixiAppRef = useRef<PIXI.Application | null>(null);
   const gameContainerRef = useRef<PIXI.Container | null>(null);
+  
   const [deathCount, setDeathCount] = useState<number>(0);
   const [isPaused, setIsPaused] = useState<boolean>(false);
   const [elapsedTime, setElapsedTime] = useState<number>(0);
@@ -186,7 +187,7 @@ const GameScreen: FC<GameScreenProps> = ({
         setElapsedTime(0);
         levelStartTimeRef.current = Date.now();
         setCurrentStandingPlatformIndex(null);
-        if (currentLevelId === 0) {
+        if (currentLevelId === 0 ) { // Was previously currentLevelId === 0 || (currentLevelId === 1 && previousLevelId === 0)
              setDeathCount(0);
         }
     } else if (currentLevelId === 0 && gameStarted && !parsedData) { 
@@ -200,6 +201,47 @@ const GameScreen: FC<GameScreenProps> = ({
 
     prevLevelIdRef.current = currentLevelId;
   }, [levelId, gameStarted, parsedData]);
+
+  const handleResize = useCallback(() => {
+    const app = pixiAppRef.current;
+    const gameContainer = gameContainerRef.current;
+    const containerElement = pixiContainerRef.current;
+
+    if (!app || !gameContainer || !containerElement) return;
+
+    const screenWidth = containerElement.clientWidth;
+    const screenHeight = containerElement.clientHeight;
+
+    if (screenWidth === 0 || screenHeight === 0) return;
+
+    app.renderer.resize(screenWidth, screenHeight);
+
+    const scaleX = screenWidth / LOGICAL_GAME_WIDTH;
+    const scaleY = screenHeight / LOGICAL_GAME_HEIGHT;
+    const scale = Math.min(scaleX, scaleY);
+
+    gameContainer.scale.set(scale);
+    
+    // Camera logic in gameLoop will handle positioning based on pivot
+    // but ensure initial positioning is correct if player exists
+    if (playerRef.current) {
+        gameContainer.pivot.x = playerRef.current.x + playerRef.current.width / 2;
+        let playerFocusY = playerRef.current.y + playerRef.current.height / 2;
+        if (playerRef.current.isCrouching) {
+            playerFocusY = playerRef.current.y + (PLAYER_CROUCH_HEIGHT / 2) + CROUCH_CAMERA_VIEW_ADJUST_WORLD;
+        }
+        gameContainer.pivot.y = playerFocusY;
+        gameContainer.x = app.screen.width / 2;
+        gameContainer.y = app.screen.height / 2;
+    } else {
+        // Center the logical view if no player yet (e.g. initial load before player spawns)
+        gameContainer.x = (screenWidth - LOGICAL_GAME_WIDTH * scale) / 2;
+        gameContainer.y = (screenHeight - LOGICAL_GAME_HEIGHT * scale) / 2;
+        gameContainer.pivot.set(0,0); // Or LOGICAL_GAME_WIDTH/2, LOGICAL_GAME_HEIGHT/2 if preferred
+    }
+
+  }, []);
+
 
   useEffect(() => {
     if (!gameStarted) {
@@ -218,18 +260,22 @@ const GameScreen: FC<GameScreenProps> = ({
       return;
     }
 
-    if (pixiAppRef.current) return; 
+    if (pixiAppRef.current) { // If app exists, just ensure resize logic is up
+      handleResize(); // Call resize in case level loaded before observer was ready
+      return;
+    }
 
     if (PIXI.TextureSource && PIXI.SCALE_MODES) {
         PIXI.TextureSource.defaultOptions.scaleMode = PIXI.SCALE_MODES.NEAREST;
     }
 
     const app = new PIXI.Application();
+    let resizeObserver: ResizeObserver | null = null;
 
     (async () => {
       await app.init({
         backgroundAlpha: 0,
-        resizeTo: pixiContainerRef.current!,
+        resizeTo: pixiContainerRef.current!, // PIXI will resize renderer to this
         antialias: false,
       });
 
@@ -251,15 +297,26 @@ const GameScreen: FC<GameScreenProps> = ({
       winSoundRef.current = new Audio('/sounds/win.wav');
       console.log("GameScreen: Audio objects created.");
 
-
-      if (levelId > 0) {
+      if (levelId > 0 || (levelId === 0 && parsedData)) { // Ensure levelId is also checked with parsedData for initial load
         levelStartTimeRef.current = Date.now();
       } else {
         levelStartTimeRef.current = null;
       }
+
+      if (pixiContainerRef.current) {
+        handleResize(); // Initial resize and scale
+        resizeObserver = new ResizeObserver(handleResize);
+        resizeObserver.observe(pixiContainerRef.current);
+      }
+
     })();
 
     return () => {
+      if (resizeObserver && pixiContainerRef.current) {
+        resizeObserver.unobserve(pixiContainerRef.current);
+      }
+      resizeObserver = null;
+
       if (jumpSoundRef.current) { jumpSoundRef.current.pause(); jumpSoundRef.current = null; }
       if (deathSoundRef.current) { deathSoundRef.current.pause(); deathSoundRef.current = null; }
       if (winSoundRef.current) { winSoundRef.current.pause(); winSoundRef.current = null; }
@@ -275,129 +332,121 @@ const GameScreen: FC<GameScreenProps> = ({
         console.log("GameScreen: PixiJS app destroyed on cleanup.");
       }
     };
-  }, [gameStarted]);
+  }, [gameStarted, handleResize, parsedData, levelId]); // Added parsedData and levelId for levelStartTimeRef logic
 
 
   useEffect(() => {
-    if (!gameStarted) return;
+    if (!gameStarted || !pixiAppRef.current || !gameContainerRef.current) return;
 
     const app = pixiAppRef.current;
     const gameContainer = gameContainerRef.current;
 
-    if (app && gameContainer && pixiContainerRef.current) {
-      gameContainer.removeChildren();
-      platformObjectsRef.current = [];
-      lastPlatformRef.current = null;
+    // Clear previous level assets
+    gameContainer.removeChildren();
+    platformObjectsRef.current = [];
+    lastPlatformRef.current = null;
+    // Player sprite is handled below
 
-      gameContainer.scale.set(DESIRED_GAME_SCALE);
+    // Scale and position of gameContainer is handled by handleResize and gameLoop camera
 
-      if (parsedData && parsedData.platforms.length > 0) {
-        console.log("GameScreen: Rendering parsed level data for levelId:", levelId);
+    if (parsedData && parsedData.platforms.length > 0) {
+      console.log("GameScreen: Rendering parsed level data for levelId:", levelId);
 
-        parsedData.platforms.forEach((platformData: PlatformData) => {
-          const pSprite = new PIXI.Graphics();
-          let platformColor = PLATFORM_COLOR_STANDARD;
-          switch(platformData.type) {
-            case 'standard': platformColor = PLATFORM_COLOR_STANDARD; break;
-            case 'mobile': platformColor = PLATFORM_COLOR_MOBILE; break;
-            case 'vertical_mobile': platformColor = PLATFORM_COLOR_VERTICAL_MOBILE; break;
-            case 'timed': platformColor = PLATFORM_COLOR_TIMED; break;
-            case 'breakable': platformColor = PLATFORM_COLOR_BREAKABLE; break;
-            default: platformColor = PLATFORM_COLOR_STANDARD;
-          }
-          pSprite.rect(0, 0, platformData.width, DEFAULT_PLATFORM_HEIGHT)
-                 .fill(platformColor);
-          pSprite.x = platformData.x;
-          pSprite.y = platformData.y;
-          gameContainer.addChild(pSprite);
-
-          const platformObj: PlatformObject = {
-            sprite: pSprite, initialX: platformData.x, initialY: platformData.y,
-            width: platformData.width, height: DEFAULT_PLATFORM_HEIGHT,
-            type: platformData.type || 'standard', currentSpeedX: 0, currentSpeedY: 0,
-          };
-
-          if (platformData.type === 'mobile') {
-            platformObj.moveDirectionX = 1; platformObj.moveRangeX = DEFAULT_PLATFORM_MOVE_RANGE;
-          }
-          if (platformData.type === 'vertical_mobile') {
-            platformObj.moveDirectionY = 1; platformObj.moveRangeY = DEFAULT_PLATFORM_MOVE_RANGE;
-          }
-          if (platformData.type === 'timed') {
-            platformObj.isVisible = true; platformObj.visibleDuration = TIMED_PLATFORM_VISIBLE_DURATION;
-            platformObj.hiddenDuration = TIMED_PLATFORM_HIDDEN_DURATION; platformObj.timer = platformObj.visibleDuration;
-            pSprite.visible = true;
-          }
-          if (platformData.type === 'breakable') {
-            platformObj.isBroken = false; platformObj.isBreaking = false;
-            platformObj.breakingTimer = 0; platformObj.respawnTimer = 0;
-            pSprite.visible = true;
-          }
-          platformObjectsRef.current.push(platformObj);
-        });
-
-        if (platformObjectsRef.current.length > 0) {
-            let rightmostPlatformCandidate: PlatformObject | null = null;
-            let maxRightEdgeCoord = -Infinity;
-            platformObjectsRef.current.forEach(pObj => {
-                const rightEdge = pObj.initialX + pObj.width;
-                if (rightEdge > maxRightEdgeCoord) {
-                    maxRightEdgeCoord = rightEdge;
-                    rightmostPlatformCandidate = pObj;
-                }
-            });
-            lastPlatformRef.current = rightmostPlatformCandidate;
-            console.log("GameScreen: Last platform identified:", lastPlatformRef.current ? `Type: ${lastPlatformRef.current.type} at X:${lastPlatformRef.current.initialX}` : "None");
+      parsedData.platforms.forEach((platformData: PlatformData) => {
+        const pSprite = new PIXI.Graphics();
+        let platformColor = PLATFORM_COLOR_STANDARD;
+        switch(platformData.type) {
+          case 'standard': platformColor = PLATFORM_COLOR_STANDARD; break;
+          case 'mobile': platformColor = PLATFORM_COLOR_MOBILE; break;
+          case 'vertical_mobile': platformColor = PLATFORM_COLOR_VERTICAL_MOBILE; break;
+          case 'timed': platformColor = PLATFORM_COLOR_TIMED; break;
+          case 'breakable': platformColor = PLATFORM_COLOR_BREAKABLE; break;
+          default: platformColor = PLATFORM_COLOR_STANDARD;
         }
+        pSprite.rect(0, 0, platformData.width, DEFAULT_PLATFORM_HEIGHT)
+               .fill(platformColor);
+        pSprite.x = platformData.x;
+        pSprite.y = platformData.y;
+        gameContainer.addChild(pSprite);
 
-        if (!playerRef.current) {
-            const playerSprite = new PIXI.Graphics();
-            let startX = 50, startY = 100;
-            if (platformObjectsRef.current.length > 0) {
-                const firstPlatform = platformObjectsRef.current.find(p => p.type === 'standard' || !p.type) || platformObjectsRef.current[0];
-                startX = firstPlatform.sprite.x + firstPlatform.width / 2 - PLAYER_WIDTH / 2;
-                startY = firstPlatform.sprite.y - PLAYER_HEIGHT;
-            }
-            playerRef.current = {
-                sprite: playerSprite, x: startX, y: startY, vx: 0, vy: 0,
-                isJumping: false, isCrouching: false, onGround: false,
-                width: PLAYER_WIDTH, height: PLAYER_HEIGHT, standingOnPlatform: null,
-            };
-            playerSprite.rect(0, 0, playerRef.current.width, playerRef.current.height).fill(PLAYER_COLOR);
-            playerSprite.x = playerRef.current.x; playerSprite.y = playerRef.current.y;
-            gameContainer.addChild(playerSprite);
-        } else {
-             if (platformObjectsRef.current.length > 0) {
-                const firstPlatform = platformObjectsRef.current.find(p => p.type === 'standard' || !p.type) || platformObjectsRef.current[0];
-                playerRef.current.x = firstPlatform.sprite.x + firstPlatform.width / 2 - playerRef.current.width / 2;
-                playerRef.current.y = firstPlatform.sprite.y - playerRef.current.height;
-            } else {
-                playerRef.current.x = 50; playerRef.current.y = 100;
-            }
-            playerRef.current.sprite.x = playerRef.current.x; playerRef.current.sprite.y = playerRef.current.y;
-            playerRef.current.vx = 0; playerRef.current.vy = 0; playerRef.current.onGround = false;
-            playerRef.current.isJumping = false; playerRef.current.height = PLAYER_HEIGHT;
-            playerRef.current.isCrouching = false; playerRef.current.standingOnPlatform = null;
-            if (!gameContainer.children.includes(playerRef.current.sprite)) {
-                 gameContainer.addChild(playerRef.current.sprite);
-            }
+        const platformObj: PlatformObject = {
+          sprite: pSprite, initialX: platformData.x, initialY: platformData.y,
+          width: platformData.width, height: DEFAULT_PLATFORM_HEIGHT,
+          type: platformData.type || 'standard', currentSpeedX: 0, currentSpeedY: 0,
+        };
+
+        if (platformData.type === 'mobile') {
+          platformObj.moveDirectionX = 1; platformObj.moveRangeX = platformData.width > 0 ? (platformData.width * 0.8 + 20) : DEFAULT_PLATFORM_MOVE_RANGE; // Range based on platform width
         }
-
-        if (playerRef.current && app && gameContainer) {
-            const scale = gameContainer.scale.x;
-            let playerFocusY = playerRef.current.y + PLAYER_HEIGHT / 2;
-            if (playerRef.current.isCrouching) {
-                 playerFocusY = playerRef.current.y + PLAYER_CROUCH_HEIGHT / 2 + CROUCH_CAMERA_VIEW_ADJUST_WORLD;
-            }
-            gameContainer.x = app.screen.width / 2 - (playerRef.current.x + playerRef.current.width / 2) * scale;
-            gameContainer.y = app.screen.height / 2 - playerFocusY * scale;
+        if (platformData.type === 'vertical_mobile') {
+          platformObj.moveDirectionY = 1; platformObj.moveRangeY = DEFAULT_PLATFORM_MOVE_RANGE;
         }
+        if (platformData.type === 'timed') {
+          platformObj.isVisible = true; platformObj.visibleDuration = TIMED_PLATFORM_VISIBLE_DURATION;
+          platformObj.hiddenDuration = TIMED_PLATFORM_HIDDEN_DURATION; platformObj.timer = platformObj.visibleDuration;
+          pSprite.visible = true;
+        }
+        if (platformData.type === 'breakable') {
+          platformObj.isBroken = false; platformObj.isBreaking = false;
+          platformObj.breakingTimer = 0; platformObj.respawnTimer = 0;
+          pSprite.visible = true;
+        }
+        platformObjectsRef.current.push(platformObj);
+      });
 
-      } else {
-        if (playerRef.current && playerRef.current.sprite) playerRef.current.sprite.visible = false;
+      if (platformObjectsRef.current.length > 0) {
+          let rightmostPlatformCandidate: PlatformObject | null = null;
+          let maxRightEdgeCoord = -Infinity;
+          platformObjectsRef.current.forEach(pObj => {
+              const rightEdge = pObj.initialX + pObj.width;
+              if (rightEdge > maxRightEdgeCoord) {
+                  maxRightEdgeCoord = rightEdge;
+                  rightmostPlatformCandidate = pObj;
+              }
+          });
+          lastPlatformRef.current = rightmostPlatformCandidate;
+          console.log("GameScreen: Last platform identified:", lastPlatformRef.current ? `Type: ${lastPlatformRef.current.type} at X:${lastPlatformRef.current.initialX}` : "None");
       }
+
+      // Player setup
+      if (!playerRef.current || !playerRef.current.sprite.parent) { // If player doesn't exist or sprite not in container
+          const playerSprite = new PIXI.Graphics();
+          let startX = 50, startY = 100;
+          if (platformObjectsRef.current.length > 0) {
+              const firstPlatform = platformObjectsRef.current.find(p => p.type === 'standard' || !p.type) || platformObjectsRef.current[0];
+              startX = firstPlatform.sprite.x + firstPlatform.width / 2 - PLAYER_WIDTH / 2;
+              startY = firstPlatform.sprite.y - PLAYER_HEIGHT;
+          }
+          playerRef.current = {
+              sprite: playerSprite, x: startX, y: startY, vx: 0, vy: 0,
+              isJumping: false, isCrouching: false, onGround: false,
+              width: PLAYER_WIDTH, height: PLAYER_HEIGHT, standingOnPlatform: null,
+          };
+          playerSprite.rect(0, 0, playerRef.current.width, playerRef.current.height).fill(PLAYER_COLOR);
+          playerSprite.x = playerRef.current.x; playerSprite.y = playerRef.current.y;
+          gameContainer.addChild(playerSprite);
+      } else { // Player exists, reset its state for new level
+           if (platformObjectsRef.current.length > 0) {
+              const firstPlatform = platformObjectsRef.current.find(p => p.type === 'standard' || !p.type) || platformObjectsRef.current[0];
+              playerRef.current.x = firstPlatform.sprite.x + firstPlatform.width / 2 - playerRef.current.width / 2;
+              playerRef.current.y = firstPlatform.sprite.y - playerRef.current.height;
+          } else {
+              playerRef.current.x = 50; playerRef.current.y = 100;
+          }
+          playerRef.current.sprite.x = playerRef.current.x; playerRef.current.sprite.y = playerRef.current.y;
+          playerRef.current.vx = 0; playerRef.current.vy = 0; playerRef.current.onGround = false;
+          playerRef.current.isJumping = false; playerRef.current.height = PLAYER_HEIGHT;
+          playerRef.current.isCrouching = false; playerRef.current.standingOnPlatform = null;
+          playerRef.current.sprite.visible = true; // Ensure visible
+      }
+
+      handleResize(); // Ensure camera/scale is correct after loading assets
+
+    } else { // No platforms in parsed data
+      if (playerRef.current && playerRef.current.sprite) playerRef.current.sprite.visible = false;
+      handleResize(); // Still call resize to clear/center view
     }
-  }, [parsedData, pixiAppRef.current?.renderer?.width, pixiAppRef.current?.renderer?.height, levelId, gameStarted]);
+  }, [parsedData, gameStarted, levelId, handleResize]); // handleResize is stable due to useCallback
 
 
   const gameLoop = useCallback((delta: PIXI.TickerCallback<any>) => {
@@ -412,7 +461,8 @@ const GameScreen: FC<GameScreenProps> = ({
         if (player.sprite) player.sprite.visible = false;
         return;
     }
-    if (player.sprite) player.sprite.visible = true;
+    if (player.sprite && !player.sprite.visible) player.sprite.visible = true;
+
 
     if (levelStartTimeRef.current && (levelId > 0 || (levelId === 0 && parsedData))) {
         const currentTime = (Date.now() - levelStartTimeRef.current) / 1000;
@@ -502,7 +552,7 @@ const GameScreen: FC<GameScreenProps> = ({
                 if (pSolid && checkCollision(uncrouchRect, pRect)) { canUncrouch = false; break; }
             }
             if (canUncrouch) { player.y -= heightDiff; player.height = PLAYER_HEIGHT; }
-            else { player.isCrouching = true; }
+            else { player.isCrouching = true; } // Can't uncrouch, remain crouching
         }
     }
 
@@ -556,8 +606,8 @@ const GameScreen: FC<GameScreenProps> = ({
         const pRect = { x: pObj.sprite.x, y: pObj.sprite.y, width: pObj.width, height: pObj.height };
         const playerVRect = { x: player.x, y: player.y, width: player.width, height: player.height };
         if (checkCollision(playerVRect, pRect)) {
-            if (player.vy > 0) {
-                if (prevPlayerY + player.height <= pRect.y + 1) { // +1 for a small tolerance
+            if (player.vy > 0) { // Falling
+                if (prevPlayerY + player.height <= pRect.y + 1) { 
                     player.y = pRect.y - player.height; player.vy = 0; player.isJumping = false; player.onGround = true;
                     player.standingOnPlatform = pObj;
                     const newPlatformIndex = platformObjectsRef.current.findIndex(pf => pf === pObj);
@@ -567,21 +617,21 @@ const GameScreen: FC<GameScreenProps> = ({
                         pObj.isBreaking = true; pObj.breakingTimer = BREAKABLE_PLATFORM_BREAK_DELAY;
                     }
                 }
-            } else if (player.vy < 0) {
-                if (prevPlayerY >= pRect.y + pRect.height -1 ) { // -1 for a small tolerance
+            } else if (player.vy < 0) { // Jumping up
+                if (prevPlayerY >= pRect.y + pRect.height -1 ) { 
                     player.y = pRect.y + pRect.height; player.vy = 0;
                 }
             }
         }
     }
 
-    if (!player.onGround && player.standingOnPlatform) {
+    if (!player.onGround && player.standingOnPlatform) { // Check if player fell off the platform they were on
         let stillOn = false; const p = player.standingOnPlatform;
         if (!((p.type === 'timed' && !p.isVisible) || (p.type === 'breakable' && p.isBroken))) {
              const pRect = { x: p.sprite.x, y: p.sprite.y, width: p.width, height: p.height };
              const pFeetY = player.y + player.height;
              if (player.x + player.width > pRect.x && player.x < pRect.x + pRect.width &&
-                 pFeetY >= pRect.y && pFeetY < pRect.y + Math.abs(player.vy) + GRAVITY + 1) { // Adjusted tolerance
+                 pFeetY >= pRect.y && pFeetY < pRect.y + Math.abs(player.vy) + GRAVITY + 1) { 
                  player.y = pRect.y - player.height; player.vy = 0; player.isJumping = false;
                  player.onGround = true; stillOn = true;
              }
@@ -595,9 +645,9 @@ const GameScreen: FC<GameScreenProps> = ({
     player.sprite.x = player.x; player.sprite.y = player.y;
     player.sprite.clear(); player.sprite.rect(0, 0, player.width, player.height).fill(PLAYER_COLOR);
 
-    let gameWorldMaxY = 1000;
+    let gameWorldMaxY = LOGICAL_GAME_HEIGHT + 200; // Default fall boundary relative to logical height
     if (parsedData && parsedData.platforms.length > 0) {
-         gameWorldMaxY = Math.max(...parsedData.platforms.map(p => p.y + DEFAULT_PLATFORM_HEIGHT)) + 200; // Add buffer
+         gameWorldMaxY = Math.max(...parsedData.platforms.map(p => p.y + DEFAULT_PLATFORM_HEIGHT)) + 200; 
     }
     if (player.y > gameWorldMaxY) {
         if (deathSoundRef.current) {
@@ -608,12 +658,11 @@ const GameScreen: FC<GameScreenProps> = ({
         setDeathCount(prev => prev + 1);
         setCurrentStandingPlatformIndex(null);
 
-
         if (platformObjectsRef.current.length > 0) {
             const respawnP = platformObjectsRef.current.find(p => p.type === 'standard' || !p.type) || platformObjectsRef.current[0];
             player.x = respawnP.sprite.x + respawnP.width / 2 - player.width / 2;
             player.y = respawnP.sprite.y - PLAYER_HEIGHT;
-        } else { player.x = 50; player.y = 100; }
+        } else { player.x = 50; player.y = 100; } // Fallback spawn if no platforms
         player.vy = 0; player.isJumping = false; player.onGround = false; player.standingOnPlatform = null;
         player.height = PLAYER_HEIGHT; player.isCrouching = false;
     }
@@ -630,17 +679,22 @@ const GameScreen: FC<GameScreenProps> = ({
       newLevelRequestedRef.current = true;
     }
 
+    // Camera logic using pivot
     if (app && gameContainer) {
-        const scale = gameContainer.scale.x;
-        let playerFocusY = player.y + player.height / 2;
-        if (player.isCrouching) { playerFocusY = player.y + (PLAYER_CROUCH_HEIGHT / 2) + CROUCH_CAMERA_VIEW_ADJUST_WORLD; }
-        const targetX = app.screen.width / 2 - (player.x + player.width / 2) * scale;
-        const targetY = app.screen.height / 2 - playerFocusY * scale;
-        gameContainer.x += (targetX - gameContainer.x) * CAMERA_LERP_FACTOR;
-        gameContainer.y += (targetY - gameContainer.y) * CAMERA_LERP_FACTOR;
+        const targetPivotX = player.x + player.width / 2;
+        let targetPivotY = player.y + player.height / 2;
+        if (player.isCrouching) {
+             targetPivotY = player.y + (PLAYER_CROUCH_HEIGHT / 2) + CROUCH_CAMERA_VIEW_ADJUST_WORLD;
+        }
+
+        gameContainer.pivot.x += (targetPivotX - gameContainer.pivot.x) * CAMERA_LERP_FACTOR;
+        gameContainer.pivot.y += (targetPivotY - gameContainer.pivot.y) * CAMERA_LERP_FACTOR;
+        
+        gameContainer.x = app.screen.width / 2;
+        gameContainer.y = app.screen.height / 2;
     }
 
-  }, [parsedData, onRequestNewLevel, isLoading, isPaused, gameStarted, globalVolume, levelId]);
+  }, [parsedData, onRequestNewLevel, isLoading, isPaused, gameStarted, globalVolume, levelId, handleResize]); // Added handleResize as it's used for initial camera setup indirectly
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -730,7 +784,7 @@ const GameScreen: FC<GameScreenProps> = ({
         <CardContent className="flex-grow p-0 m-0 relative overflow-hidden">
           <div
             ref={pixiContainerRef}
-            className="w-full h-full bg-black/50"
+            className="w-full h-full bg-black/50" 
             aria-label="Game canvas"
             data-ai-hint="gameplay screenshot"
           />
@@ -887,3 +941,6 @@ const GameScreen: FC<GameScreenProps> = ({
 };
 
 export default GameScreen;
+
+
+    

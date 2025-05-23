@@ -1,8 +1,9 @@
+
 export interface Platform {
   x: number;
   y: number;
   width: number;
-  type?: 'standard' | 'mobile' | 'timed' | 'breakable' | string; // Allow for more types
+  type?: 'standard' | 'mobile' | 'vertical_mobile' | 'timed' | 'breakable' | string;
 }
 
 export interface Obstacle {
@@ -20,3 +21,4 @@ export interface ParsedLevelData {
   startPoint?: { x: number; y: number };
   endPoint?: { x: number; y: number };
 }
+
