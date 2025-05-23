@@ -34,40 +34,39 @@ type LevelGeneratorFormValues = z.infer<typeof formSchema>;
 
 interface LevelGeneratorFormProps {
   onGenerateRequested: (formData: LevelGeneratorFormValues) => Promise<void>;
-  initialValues?: Pick<GenerateLevelInput, 'difficulty'>; 
-  onFormSubmitted?: () => void; // Called after onGenerateRequested completes
+  initialDifficulty?: GenerateLevelInput['difficulty']; 
+  onFormSubmitted?: () => void; 
 }
 
 const LevelGeneratorForm: FC<LevelGeneratorFormProps> = ({ 
     onGenerateRequested, 
-    initialValues,
+    initialDifficulty,
     onFormSubmitted 
 }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const form = useForm<LevelGeneratorFormValues>({
     resolver: zodResolver(formSchema),
-    defaultValues: initialValues || {
-      difficulty: 'medium',
+    defaultValues: {
+      difficulty: initialDifficulty || 'medium',
     },
   });
 
   useEffect(() => {
-    if (initialValues) {
-      form.reset(initialValues);
+    if (initialDifficulty) {
+      form.reset({ difficulty: initialDifficulty });
     }
-  }, [initialValues, form]);
+  }, [initialDifficulty, form]);
 
   const onSubmit: SubmitHandler<LevelGeneratorFormValues> = async (values) => {
     setIsSubmitting(true);
     try {
       await onGenerateRequested(values); 
       if (onFormSubmitted) {
-          onFormSubmitted(); // Call this after generation is initiated
+          onFormSubmitted(); 
       }
     } catch (error) {
       console.error("Error during onGenerateRequested call from LevelGeneratorForm:", error);
-      // Potentially show a local error message if needed, but HomePage handles general errors
     } finally {
       setIsSubmitting(false);
     }
