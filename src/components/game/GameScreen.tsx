@@ -211,7 +211,7 @@ const GameScreen: FC<GameScreenProps> = ({
     }
     
     if (currentLevelId === 0 ) { 
-        if (previousLevelId === -1 || previousLevelId === undefined || currentLevelId !== previousLevelId ) { // Reset for new game or manual reset to L0
+        if (previousLevelId === -1 || previousLevelId === undefined || currentLevelId !== previousLevelId ) { 
             setDeathCount(0);
         }
         setElapsedTime(0);
@@ -295,7 +295,6 @@ const GameScreen: FC<GameScreenProps> = ({
         resizeObserver.unobserve(pixiContainerRef.current);
       }
       resizeObserver = null;
-      // Sound refs are not nulled here, handled by the separate effect.
       if (pixiAppRef.current) {
         pixiAppRef.current.destroy(true, { children: true, texture: true, baseTexture: true });
         pixiAppRef.current = null;
@@ -334,11 +333,9 @@ const GameScreen: FC<GameScreenProps> = ({
       platformObjectsRef.current = [];
       lastPlatformRef.current = null;
       if (playerRef.current?.sprite) playerRef.current.sprite.visible = false;
-      // console.log("GameScreen (Level Load): parsedData is null. Cleared game elements.");
       return;
     }
     
-    // console.log("GameScreen (Level Load): Loading level data into Pixi for levelId:", levelId);
     gameContainer.removeChildren(); 
     platformObjectsRef.current = [];
     lastPlatformRef.current = null;
@@ -427,19 +424,14 @@ const GameScreen: FC<GameScreenProps> = ({
       }
 
       if (playerRef.current && gameContainer && app && app.renderer) {
-        gameContainer.pivot.x = playerRef.current.x + playerRef.current.width / 2;
-        gameContainer.pivot.y = playerRef.current.y + playerRef.current.height / 2;
-        if (app.screen.width > 0 && app.screen.height > 0) {
-          gameContainer.x = app.screen.width / 2;
-          gameContainer.y = app.screen.height / 2;
-        }
+        // Initial camera setup will be handled by handleResize or gameLoop's first run
+        handleResize();
       }
-      handleResize(); 
     } else { 
       if (playerRef.current && playerRef.current.sprite) playerRef.current.sprite.visible = false;
       handleResize(); 
     }
-  }, [parsedData, gameStarted, levelId, handleResize]); 
+  }, [parsedData, gameStarted, handleResize]); 
 
 
   const gameLoop = useCallback((delta: PIXI.TickerCallback<any>) => {
@@ -662,34 +654,29 @@ const GameScreen: FC<GameScreenProps> = ({
 
     if (lastPlatformRef.current && player.standingOnPlatform === lastPlatformRef.current && player.onGround &&
         !newLevelRequestedRef.current && onRequestNewLevel && !isLoading) {
-      if (winSoundRef.current) {
-        winSoundRef.current.volume = globalVolume;
-        winSoundRef.current.currentTime = 0;
-        winSoundRef.current.play().catch(e => console.warn("Win sound err:", e));
-      }
+        if (winSoundRef.current) {
+            winSoundRef.current.volume = globalVolume;
+            winSoundRef.current.currentTime = 0;
+            winSoundRef.current.play().catch(e => console.warn("Win sound err:", e));
+        }
       if (onRequestNewLevel) onRequestNewLevel();
       newLevelRequestedRef.current = true;
     }
 
-    // Camera logic: follow player with lerp and pivot
-    if (app && gameContainer && player && app.screen.width > 0 && app.screen.height > 0 && gameContainer.scale.x > 0 && gameContainer.scale.y > 0) { 
-        const targetPivotX = player.x + player.width / 2;
+    if (app && gameContainer && player && app.screen.width > 0 && app.screen.height > 0 && gameContainer.scale.x > 0 && gameContainer.scale.y > 0) {
+        let targetPivotX = player.x + player.width / 2;
         let targetPivotY = player.y + player.height / 2;
         if (player.isCrouching) {
-             targetPivotY = player.y + (PLAYER_CROUCH_HEIGHT / 2) + CROUCH_CAMERA_VIEW_ADJUST_WORLD;
+            targetPivotY = player.y + (PLAYER_CROUCH_HEIGHT / 2) + CROUCH_CAMERA_VIEW_ADJUST_WORLD;
         }
 
-        if (!Number.isFinite(gameContainer.pivot.x) || !Number.isFinite(gameContainer.pivot.y) || 
+        if (!Number.isFinite(gameContainer.pivot.x) || !Number.isFinite(gameContainer.pivot.y) ||
             !Number.isFinite(targetPivotX) || !Number.isFinite(targetPivotY)) {
-            console.error("CRITICAL: Game pivot or target pivot became NaN/Infinity.", {
-                playerX: playerRef.current?.x,
-                playerY: playerRef.current?.y,
-                currentPivotX: gameContainer.pivot.x,
-                currentPivotY: gameContainer.pivot.y,
-                targetPivotX: targetPivotX,
-                targetPivotY: targetPivotY,
+            console.error("CRITICAL: Game pivot or target pivot became NaN/Infinity. Attempting recovery.", {
+                playerX: playerRef.current?.x, playerY: playerRef.current?.y,
+                currentPivotX: gameContainer.pivot.x, currentPivotY: gameContainer.pivot.y,
+                targetPivotX: targetPivotX, targetPivotY: targetPivotY,
             });
-            // Attempt to recover by resetting to a known safe state
             if (playerRef.current && Number.isFinite(playerRef.current.x) && Number.isFinite(playerRef.current.y)) {
                  gameContainer.pivot.x = playerRef.current.x + playerRef.current.width / 2;
                  gameContainer.pivot.y = playerRef.current.y + playerRef.current.height / 2;
@@ -698,17 +685,14 @@ const GameScreen: FC<GameScreenProps> = ({
                  gameContainer.pivot.y = LOGICAL_GAME_HEIGHT / 2;
             }
         } else {
-            // Normal lerping logic for pivot
             gameContainer.pivot.x += (targetPivotX - gameContainer.pivot.x) * CAMERA_LERP_FACTOR;
             gameContainer.pivot.y += (targetPivotY - gameContainer.pivot.y) * CAMERA_LERP_FACTOR;
         }
         
-        // Always ensure the game container is positioned at the center of the screen
-        // This should happen regardless of pivot validity, once a safe pivot is established
         gameContainer.x = app.screen.width / 2; 
         gameContainer.y = app.screen.height / 2;
     }
-  }, [parsedData, onRequestNewLevel, isLoading, isPaused, gameStarted, globalVolume, levelId, handleResize]); 
+  }, [parsedData, onRequestNewLevel, isLoading, isPaused, gameStarted, globalVolume, levelId, handleResize, deathCount, elapsedTime, currentStandingPlatformIndex]); 
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -794,7 +778,7 @@ const GameScreen: FC<GameScreenProps> = ({
 
   return (
     <>
-      <Card className="shadow-lg flex-grow flex flex-col border-none rounded-none relative h-full overflow-hidden min-h-0">
+      <Card className="border-none rounded-none shadow-lg flex-grow flex flex-col relative h-full overflow-hidden min-h-0">
         <CardContent className="flex-grow p-0 m-0 relative overflow-hidden min-h-0">
           <div
             ref={pixiContainerRef}
@@ -852,7 +836,7 @@ const GameScreen: FC<GameScreenProps> = ({
                         <span className="sr-only">Pause Game</span>
                     </Button>
                 </DialogTrigger>
-                <DialogContent className="w-[90vw] max-w-md bg-card border-primary text-foreground">
+                <DialogContent className="w-[90vw] max-w-md bg-card border-primary text-foreground max-h-[85vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle className="text-2xl text-primary uppercase tracking-wider text-center mb-4">Paused</DialogTitle>
                     </DialogHeader>
