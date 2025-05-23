@@ -16,7 +16,7 @@ export default function HomePage() {
   const [isLoadingLevel, setIsLoadingLevel] = useState<boolean>(false);
   const [gameStarted, setGameStarted] = useState<boolean>(false);
   const { toast } = useToast();
-  const [levelCount, setLevelCount] = useState(0);
+  const [levelCount, setLevelCount] = useState(0); // 0 means no level loaded / start screen
 
   const triggerLevelGeneration = useCallback(async (params: Pick<GenerateLevelInput, 'difficulty'>, isInitialStart: boolean = false) => {
     setIsLoadingLevel(true);
@@ -33,11 +33,11 @@ export default function HomePage() {
           description: result.error || "An unknown error occurred.",
         });
         setGeneratedLevel(null);
-        if (isInitialStart) setGameStarted(false); 
+        if (isInitialStart) setGameStarted(false);
       } else {
         console.log(`HomePage: Level ${targetLevelNumber} generated successfully.`);
         setGeneratedLevel(result);
-        setLevelCount(targetLevelNumber);
+        setLevelCount(targetLevelNumber); // Update level count
         toast({
           title: `Level ${targetLevelNumber} Generated!`,
           description: isInitialStart ? "Let the adventure begin!" : "The adventure continues.",
@@ -59,14 +59,15 @@ export default function HomePage() {
 
   const handleStartGame = useCallback((difficulty: GenerateLevelInput['difficulty']) => {
     setGameStarted(true);
-    setLevelCount(0); // Reset level count for a new game
+    setLevelCount(0); // Reset level count, triggerLevelGeneration will set it to 1
     triggerLevelGeneration({ difficulty }, true);
   }, [triggerLevelGeneration]);
+
 
   const processManualLevelGeneration = useCallback(async (formData: Pick<GenerateLevelInput, 'difficulty'>) => {
     console.log(`HomePage: processManualLevelGeneration called with difficulty:`, formData.difficulty);
     setIsLoadingLevel(true);
-    setLevelCount(0); // Signal that this is a reset to level 1
+    setLevelCount(0); // Signal that this is a reset to level 1 for GameScreen's loading message
 
     try {
       const result = await handleGenerateLevelAction(formData);
@@ -103,8 +104,12 @@ export default function HomePage() {
 
   const handleRequestNewLevel = useCallback(() => {
     console.log(`HomePage: handleRequestNewLevel called. Current levelCount: ${levelCount}. Requesting Level ${levelCount + 1}.`);
-    triggerLevelGeneration(DEFAULT_DIFFICULTY_PARAM, false);
-  }, [triggerLevelGeneration, levelCount]);
+    // Use the difficulty of the current level, or default if somehow not set
+    const currentDifficulty = generatedLevel // This might be null if a manual generation just failed
+      ? (JSON.parse(generatedLevel.levelData) as { difficulty?: GenerateLevelInput['difficulty'] })?.difficulty || DEFAULT_DIFFICULTY_PARAM.difficulty
+      : DEFAULT_DIFFICULTY_PARAM.difficulty;
+    triggerLevelGeneration({ difficulty: currentDifficulty || 'medium' }, false);
+  }, [triggerLevelGeneration, levelCount, generatedLevel]);
 
   // Effect to handle the initial game state (show start screen)
   useEffect(() => {
@@ -116,12 +121,12 @@ export default function HomePage() {
   }, [gameStarted]);
 
   return (
-    <div className="min-h-screen flex flex-col bg-background text-foreground selection:bg-primary selection:text-primary-foreground">
-      <main className="flex-grow flex flex-col"> {/* Removed padding p-1 md:p-2 */}
+    <div className="h-full flex flex-col bg-background text-foreground selection:bg-primary selection:text-primary-foreground">
+      <main className="flex-grow flex flex-col">
             <GameScreen
               levelOutput={generatedLevel}
               onRequestNewLevel={handleRequestNewLevel}
-              levelId={levelCount} 
+              levelId={levelCount}
               isLoading={isLoadingLevel}
               onManualGenerateRequested={processManualLevelGeneration}
               defaultLevelParams={DEFAULT_DIFFICULTY_PARAM}

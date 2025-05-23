@@ -7,6 +7,10 @@ body {
 }
 
 @layer base {
+  html, body, #__next {
+    @apply h-full;
+  }
+
   :root {
     --background: 282 100% 10%; /* Dark Desaturated Purple */
     --foreground: 282 20% 85%; /* Light text for contrast */
