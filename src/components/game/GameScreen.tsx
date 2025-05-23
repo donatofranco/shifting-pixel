@@ -8,8 +8,8 @@ import type { GenerateLevelOutput, GenerateLevelInput } from '@/ai/flows/generat
 import type { ParsedLevelData, Platform as PlatformData } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Loader2, TimerIcon, PauseIcon, PlayIcon, SlidersHorizontal, Volume2, ListTree, Footprints, ArrowUp, ArrowDown, ArrowLeft, ArrowRight } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from '@/components/ui/dialog';
+import { Loader2, TimerIcon, PauseIcon, PlayIcon, Gamepad2, SlidersHorizontal, Volume2, ListTree, Footprints, ArrowUp, ArrowDown, ArrowLeft, ArrowRight } from 'lucide-react';
 import LevelGeneratorForm from '@/components/game/LevelGeneratorForm';
 import ControlsGuide from '@/components/game/ControlsGuide';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -55,7 +55,7 @@ const JUMP_FORCE = 7;
 const GRAVITY = 0.3;
 const DEFAULT_PLATFORM_HEIGHT = 10;
 
-const PLATFORM_COLOR_STANDARD = 0x9400D3; // Dark Purple
+const PLATFORM_COLOR_STANDARD = 0x9400D3; // Vibrant Purple
 const PLATFORM_COLOR_MOBILE = 0x0077FF; // Blue
 const PLATFORM_COLOR_VERTICAL_MOBILE = 0x00D377; // Green-Blue
 const PLATFORM_COLOR_TIMED = 0xFF8C00; // Orange
@@ -778,12 +778,12 @@ const GameScreen: FC<GameScreenProps> = ({
           </CardTitle>
           <div className="flex items-center gap-1">
             <Dialog open={isPaused} onOpenChange={setIsPaused}>
-                <Dialog.Trigger asChild>
+                <DialogTrigger asChild>
                     <Button variant="ghost" size="icon" className="text-primary hover:text-primary/80" onClick={() => setIsPaused(true)}>
                         <PauseIcon className="h-6 w-6" />
                         <span className="sr-only">Pause Game</span>
                     </Button>
-                </Dialog.Trigger>
+                </DialogTrigger>
                 <DialogContent className="sm:max-w-[480px] bg-card border-primary text-foreground">
                     <DialogHeader>
                         <DialogTitle className="text-2xl text-primary uppercase tracking-wider text-center mb-4">Paused</DialogTitle>
