@@ -9,11 +9,12 @@ import type { ParsedLevelData, Platform as PlatformData } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from '@/components/ui/dialog';
-import { Loader2, TimerIcon, PauseIcon, PlayIcon, Gamepad2, SlidersHorizontal } from 'lucide-react';
+import { Loader2, TimerIcon, PauseIcon, PlayIcon, Gamepad2, SlidersHorizontal, Volume2 } from 'lucide-react';
 import LevelGeneratorForm from '@/components/game/LevelGeneratorForm';
 import ControlsGuide from '@/components/game/ControlsGuide';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { Slider } from '@/components/ui/slider';
 
 
 interface GameScreenProps {
@@ -30,9 +31,8 @@ interface GameScreenProps {
 const parseLevelData = (levelDataString: string | undefined): ParsedLevelData | null => {
   if (!levelDataString) return null;
   try {
-    // Ensure no leading/trailing whitespace that could break JSON.parse
     const trimmedData = levelDataString.trim();
-    if (!trimmedData) return null; // Handle case where trim results in empty string
+    if (!trimmedData) return null;
     const data = JSON.parse(trimmedData);
     if (!data.platforms || !Array.isArray(data.platforms)) data.platforms = [];
     data.obstacles = [];
@@ -127,6 +127,7 @@ const GameScreen: FC<GameScreenProps> = ({
   const [elapsedTime, setElapsedTime] = useState<number>(0);
   const levelStartTimeRef = useRef<number | null>(null);
   const [startScreenDifficulty, setStartScreenDifficulty] = useState<GenerateLevelInput['difficulty']>(defaultLevelParams.difficulty || 'medium');
+  const [globalVolume, setGlobalVolume] = useState<number>(1); // 0 (silent) to 1 (max)
 
   const jumpSoundRef = useRef<HTMLAudioElement | null>(null);
   const deathSoundRef = useRef<HTMLAudioElement | null>(null);
@@ -164,17 +165,20 @@ const GameScreen: FC<GameScreenProps> = ({
   useEffect(() => {
     if (!gameStarted) return;
 
-    if (levelId > 0 && prevLevelIdRef.current !== undefined && prevLevelIdRef.current !== levelId) {
+    if (levelId > 0 && prevLevelIdRef.current !== undefined && prevLevelIdRef.current !== levelId && levelId !== 0) {
+        console.log(`GameScreen: levelId changed from ${prevLevelIdRef.current} to ${levelId}. Resetting newLevelRequestedRef.`);
         newLevelRequestedRef.current = false;
     }
-
+    
     if (levelId > 0) {
         setElapsedTime(0);
         levelStartTimeRef.current = Date.now();
     } else if (levelId === 0 && gameStarted) { // Signifies start of a manual reset or new game
+        console.log("GameScreen: Level ID is 0 (manual generation or game start), resetting death count and elapsed time.");
         setElapsedTime(0);
-        setDeathCount(0); // Reset death count here
+        setDeathCount(0); 
         levelStartTimeRef.current = null;
+        newLevelRequestedRef.current = false; 
     }
 
     prevLevelIdRef.current = levelId;
@@ -198,7 +202,7 @@ const GameScreen: FC<GameScreenProps> = ({
       return;
     }
 
-    if (pixiAppRef.current) return;
+    if (pixiAppRef.current) return; // Already initialized
 
     if (PIXI.TextureSource && PIXI.SCALE_MODES) {
         PIXI.TextureSource.defaultOptions.scaleMode = PIXI.SCALE_MODES.NEAREST;
@@ -235,12 +239,11 @@ const GameScreen: FC<GameScreenProps> = ({
       if (levelId > 0) {
         levelStartTimeRef.current = Date.now();
       } else {
-        levelStartTimeRef.current = null;
+        levelStartTimeRef.current = null; // Will be set when level 1 generation is complete
       }
     })();
 
     return () => {
-      // This cleanup runs when the component unmounts OR gameStarted becomes false
       if (jumpSoundRef.current) { jumpSoundRef.current.pause(); jumpSoundRef.current = null; }
       if (deathSoundRef.current) { deathSoundRef.current.pause(); deathSoundRef.current = null; }
       if (winSoundRef.current) { winSoundRef.current.pause(); winSoundRef.current = null; }
@@ -256,7 +259,7 @@ const GameScreen: FC<GameScreenProps> = ({
         console.log("GameScreen: PixiJS app destroyed on cleanup.");
       }
     };
-  }, [gameStarted]); // Only depend on gameStarted for Pixi App and sound object lifecycle
+  }, [gameStarted]); 
 
 
   useEffect(() => {
@@ -273,6 +276,7 @@ const GameScreen: FC<GameScreenProps> = ({
       gameContainer.scale.set(DESIRED_GAME_SCALE);
 
       if (parsedData && parsedData.platforms.length > 0) {
+        console.log("GameScreen: Rendering parsed level data for levelId:", levelId);
 
         parsedData.platforms.forEach((platformData: PlatformData) => {
           const pSprite = new PIXI.Graphics();
@@ -494,7 +498,11 @@ const GameScreen: FC<GameScreenProps> = ({
 
     if ((keys.has('KeyW') || keys.has('ArrowUp') || keys.has('Space')) && player.onGround && !player.isCrouching) {
       player.vy = -JUMP_FORCE; player.isJumping = true; player.onGround = false; player.standingOnPlatform = null;
-      if (jumpSoundRef.current) { jumpSoundRef.current.currentTime = 0; jumpSoundRef.current.play().catch(e => console.warn("Jump sound err:", e)); }
+      if (jumpSoundRef.current) { 
+        jumpSoundRef.current.volume = globalVolume;
+        jumpSoundRef.current.currentTime = 0; 
+        jumpSoundRef.current.play().catch(e => console.warn("Jump sound err:", e)); 
+      }
     }
 
     if (!player.onGround) player.vy += GRAVITY;
@@ -569,7 +577,11 @@ const GameScreen: FC<GameScreenProps> = ({
          gameWorldMaxY = Math.max(...parsedData.platforms.map(p => p.y + DEFAULT_PLATFORM_HEIGHT)) + 200;
     }
     if (player.y > gameWorldMaxY) {
-        if (deathSoundRef.current) { deathSoundRef.current.currentTime = 0; deathSoundRef.current.play().catch(e => console.warn("Death sound err:", e)); }
+        if (deathSoundRef.current) { 
+          deathSoundRef.current.volume = globalVolume;
+          deathSoundRef.current.currentTime = 0; 
+          deathSoundRef.current.play().catch(e => console.warn("Death sound err:", e)); 
+        }
         setDeathCount(prev => prev + 1);
 
         if (platformObjectsRef.current.length > 0) {
@@ -584,7 +596,11 @@ const GameScreen: FC<GameScreenProps> = ({
     if (lastPlatformRef.current && player.standingOnPlatform === lastPlatformRef.current && player.onGround &&
         !newLevelRequestedRef.current && onRequestNewLevel && !isLoading) {
       console.log("GameScreen: Player reached the last platform. Requesting new level.");
-      if (winSoundRef.current) { winSoundRef.current.currentTime = 0; winSoundRef.current.play().catch(e => console.warn("Win sound err:", e)); }
+      if (winSoundRef.current) { 
+        winSoundRef.current.volume = globalVolume;
+        winSoundRef.current.currentTime = 0; 
+        winSoundRef.current.play().catch(e => console.warn("Win sound err:", e)); 
+      }
       if (onRequestNewLevel) onRequestNewLevel();
       newLevelRequestedRef.current = true;
     }
@@ -599,7 +615,7 @@ const GameScreen: FC<GameScreenProps> = ({
         gameContainer.y += (targetY - gameContainer.y) * CAMERA_LERP_FACTOR;
     }
 
-  }, [parsedData, onRequestNewLevel, levelId, isLoading, isPaused, gameStarted]);
+  }, [parsedData, onRequestNewLevel, levelId, isLoading, isPaused, gameStarted, globalVolume]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -632,8 +648,8 @@ const GameScreen: FC<GameScreenProps> = ({
   }, [gameLoop, isLoading, isPaused, gameStarted]);
 
   const handlePopoverFormSubmit = async (formData: Pick<GenerateLevelInput, 'difficulty'>) => {
-    setIsPaused(false); // Close pause menu first
-    await onManualGenerateRequested(formData); // This will trigger loading state in HomePage
+    setIsPaused(false); 
+    await onManualGenerateRequested(formData); 
   };
 
 
@@ -715,6 +731,21 @@ const GameScreen: FC<GameScreenProps> = ({
                         <div className="border p-3 rounded-md border-border bg-background/30">
                             <ControlsGuide />
                         </div>
+                         <div className="border p-3 rounded-md border-border bg-background/30 space-y-3">
+                            <Label htmlFor="volume-slider" className="text-primary uppercase text-base tracking-wider text-center block">Volume</Label>
+                            <div className="flex items-center gap-2">
+                                <Volume2 className="w-5 h-5 text-primary" />
+                                <Slider
+                                    id="volume-slider"
+                                    defaultValue={[globalVolume * 100]}
+                                    max={100}
+                                    step={1}
+                                    onValueChange={(value) => setGlobalVolume(value[0] / 100)}
+                                    className="w-full"
+                                    aria-label="Global game volume"
+                                />
+                            </div>
+                        </div>
                     </div>
                     <DialogFooter>
                         <Button
@@ -748,7 +779,7 @@ const GameScreen: FC<GameScreenProps> = ({
                           <p className="text-lg">Generating Level {levelId + 1}...</p>
                       </>
                   ) : (
-                      <p className="text-lg">Loading...</p> // Fallback, should ideally not be hit if gameStarted logic is correct
+                      <p className="text-lg">Loading...</p> 
                   )
               )}
             </div>
@@ -760,3 +791,4 @@ const GameScreen: FC<GameScreenProps> = ({
 };
 
 export default GameScreen;
+
