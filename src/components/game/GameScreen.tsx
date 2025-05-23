@@ -31,10 +31,10 @@ interface GameScreenProps {
 const parseLevelData = (levelDataString: string | undefined): ParsedLevelData | null => {
   if (!levelDataString) return null;
   try {
-    const trimmedData = levelDataString.trim();
-    if (!trimmedData) return null;
     // IMPORTANT: Ensure the AI output is ONLY the JSON string.
     // Any preceding/succeeding text (like "```json" or explanations) will cause parse errors.
+    const trimmedData = levelDataString.trim();
+    if (!trimmedData) return null;
     const data = JSON.parse(trimmedData);
     if (!data.platforms || !Array.isArray(data.platforms)) data.platforms = [];
     data.obstacles = []; // Obstacles are not rendered
@@ -414,7 +414,7 @@ const GameScreen: FC<GameScreenProps> = ({
         const mobileRect = { x: nextX, y: pObj.sprite.y, width: pObj.width, height: pObj.height };
         for (const otherP of platformObjectsRef.current) {
             if (pObj === otherP) continue;
-            const otherSolid = !((otherP.type === 'timed' && !otherP.isVisible) || (otherP.type === 'breakable' && (otherP.isBroken || (otherP.isBreaking && otherP.breakingTimer !== undefined && otherP.breakingTimer <=0) )));
+            const otherSolid = !((otherP.type === 'timed' && !otherP.isVisible) || (otherP.type === 'breakable' && (otherP.isBroken || (otherP.isBreaking && otherP.breakingTimer !== undefined && p.breakingTimer <=0) )));
             if (otherSolid) {
                 const otherRect = { x: otherP.sprite.x, y: otherP.sprite.y, width: otherP.width, height: otherP.height };
                 if (checkCollision(mobileRect, otherRect)) { pObj.moveDirectionX *= -1; nextX = pObj.sprite.x; collided = true; break; }
@@ -616,7 +616,7 @@ const GameScreen: FC<GameScreenProps> = ({
         gameContainer.y += (targetY - gameContainer.y) * CAMERA_LERP_FACTOR;
     }
 
-  }, [parsedData, onRequestNewLevel, levelId, isLoading, isPaused, gameStarted, globalVolume]); // Removed elapsedTime
+  }, [parsedData, onRequestNewLevel, levelId, isLoading, isPaused, gameStarted, globalVolume]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -698,8 +698,38 @@ const GameScreen: FC<GameScreenProps> = ({
 
   return (
     <>
-      <Card className="shadow-lg bg-card/80 backdrop-blur-sm flex-grow flex flex-col border-none rounded-none">
-        <CardHeader className="flex flex-row items-center justify-between p-4">
+      {/* Main Game Screen Card - now relative for header overlay */}
+      <Card className="shadow-lg flex-grow flex flex-col border-none rounded-none relative">
+        {/* Game Canvas Area - takes full space behind the header */}
+        <CardContent className="flex-grow p-0 m-0 relative overflow-hidden">
+          <div
+            ref={pixiContainerRef}
+            className="w-full h-full bg-black/50" // This creates the game canvas background
+            aria-label="Game canvas"
+            data-ai-hint="gameplay screenshot"
+          />
+          {/* Loading Overlay - covers everything including header area */}
+          {isLoading && (
+            <div className="absolute inset-0 bg-background/80 flex flex-col items-center justify-center text-center text-foreground z-20 p-4">
+              <Loader2 className="w-12 h-12 animate-spin text-primary mb-4" />
+              { (levelId === 0 && gameStarted) ? (
+                  <p className="text-lg">Loading Game... Generating Level 1...</p>
+              ) : (
+                  gameStarted && levelId > 0 ? (
+                      <>
+                          <p className="text-2xl font-bold mb-2">Level {levelId} Complete!</p>
+                          <p className="text-lg">Generating Level {levelId + 1}...</p>
+                      </>
+                  ) : (
+                      <p className="text-lg">Loading...</p>
+                  )
+              )}
+            </div>
+          )}
+        </CardContent>
+
+        {/* Header - absolutely positioned overlay */}
+        <CardHeader className="absolute top-0 left-0 right-0 z-10 flex flex-row items-center justify-between p-4 bg-background/70 backdrop-blur-sm">
           <CardTitle className="text-primary uppercase text-sm md:text-base tracking-wider flex items-center gap-x-2 md:gap-x-3 flex-wrap">
             <span>Level {levelId > 0 ? levelId : '...'}</span>
             <span className="text-foreground/70">|</span>
@@ -761,34 +791,10 @@ const GameScreen: FC<GameScreenProps> = ({
             </Dialog>
           </div>
         </CardHeader>
-        <CardContent className="flex-grow p-0 m-0 relative overflow-hidden"> {/* Removed rounded-b-lg */}
-          <div
-            ref={pixiContainerRef}
-            className="w-full h-full bg-black/50" // This creates the game canvas background
-            aria-label="Game canvas"
-            data-ai-hint="gameplay screenshot"
-          />
-          {isLoading && ( // This is the main loading overlay
-            <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center text-center text-foreground z-20 p-4">
-              <Loader2 className="w-12 h-12 animate-spin text-primary mb-4" />
-              { (levelId === 0 && gameStarted) ? (
-                  <p className="text-lg">Loading Game... Generating Level 1...</p>
-              ) : (
-                  gameStarted && levelId > 0 ? (
-                      <>
-                          <p className="text-2xl font-bold mb-2">Level {levelId} Complete!</p>
-                          <p className="text-lg">Generating Level {levelId + 1}...</p>
-                      </>
-                  ) : (
-                      <p className="text-lg">Loading...</p> // Should ideally not be hit if gameStarted is false
-                  )
-              )}
-            </div>
-          )}
-        </CardContent>
       </Card>
     </>
   );
 };
 
 export default GameScreen;
+
