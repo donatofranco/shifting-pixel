@@ -170,6 +170,33 @@ const GameScreen: FC<GameScreenProps> = ({
     return null;
   }, [levelOutput, levelId, gameStarted]);
 
+  const handleResize = useCallback(() => {
+    const app = pixiAppRef.current;
+    const gameContainer = gameContainerRef.current;
+    const containerElement = pixiContainerRef.current;
+
+    if (!app || !gameContainer || !containerElement) return;
+
+    const screenWidth = containerElement.clientWidth;
+    const screenHeight = containerElement.clientHeight;
+    
+    // Ensure dimensions are positive to prevent errors
+    if (screenWidth <= 0 || screenHeight <= 0) {
+        // console.warn("GameScreen handleResize: Invalid container dimensions, skipping resize.", screenWidth, screenHeight);
+        return;
+    }
+    
+    app.renderer.resize(screenWidth, screenHeight);
+
+    const scaleX = screenWidth / LOGICAL_GAME_WIDTH;
+    const scaleY = screenHeight / LOGICAL_GAME_HEIGHT;
+    const scale = Math.max(0.001, Math.min(scaleX, scaleY)); // Ensure scale is positive and not zero
+
+    gameContainer.scale.set(scale);
+    // console.log(`GameScreen handleResize: Renderer resized to ${screenWidth}x${screenHeight}. Game scale set to ${scale.toFixed(2)}`);
+  }, []);
+
+
  useEffect(() => {
     const currentLevelId = levelId === undefined ? 0 : levelId;
     const previousLevelId = prevLevelIdRef.current === undefined ? -1 : prevLevelIdRef.current;
@@ -184,25 +211,19 @@ const GameScreen: FC<GameScreenProps> = ({
     }
     
     if (currentLevelId === 0 ) { 
-        // This case handles the initial load for a manually generated level or start screen.
-        // Reset death count only if it's truly the start of a game (not a manual regeneration mid-game treated as L0 then L1)
-        // The logic in onManualGenerateRequested already resets levelCount to 0.
-        // So this effectively means "if this is the first time we are loading level 0/1".
-        if (previousLevelId === undefined || previousLevelId === -1) {
-          setDeathCount(0);
+        if (previousLevelId === -1 || previousLevelId === undefined || currentLevelId !== previousLevelId ) { // Reset for new game or manual reset to L0
+            setDeathCount(0);
         }
         setElapsedTime(0);
         setCurrentStandingPlatformIndex(null);
         levelStartTimeRef.current = parsedData ? Date.now() : null; 
         newLevelRequestedRef.current = false;
     } else if (previousLevelId !== currentLevelId && currentLevelId > 0) { 
-        // This is for subsequent levels (2, 3, ...)
         setElapsedTime(0);
         setCurrentStandingPlatformIndex(null);
         levelStartTimeRef.current = Date.now(); 
         newLevelRequestedRef.current = false;
     } else if (parsedData && !levelStartTimeRef.current && currentLevelId > 0){ 
-        // Catch-all if startTime wasn't set for some reason for L1+
         levelStartTimeRef.current = Date.now();
     }
 
@@ -210,36 +231,9 @@ const GameScreen: FC<GameScreenProps> = ({
   }, [levelId, gameStarted, parsedData]);
 
 
-  const handleResize = useCallback(() => {
-    const app = pixiAppRef.current;
-    const gameContainer = gameContainerRef.current;
-    const containerElement = pixiContainerRef.current;
-
-    if (!app || !gameContainer || !containerElement) return;
-
-    const screenWidth = containerElement.clientWidth;
-    const screenHeight = containerElement.clientHeight;
-
-    if (screenWidth <= 0 || screenHeight <= 0) {
-        // console.warn("GameScreen handleResize: Invalid container dimensions, skipping resize.", screenWidth, screenHeight);
-        return;
-    }
-    
-    app.renderer.resize(screenWidth, screenHeight);
-
-    const scaleX = screenWidth / LOGICAL_GAME_WIDTH;
-    const scaleY = screenHeight / LOGICAL_GAME_HEIGHT;
-    const scale = Math.max(0.001, Math.min(scaleX, scaleY)); // Ensure scale is positive
-
-    gameContainer.scale.set(scale);
-    // console.log(`GameScreen handleResize: Renderer resized to ${screenWidth}x${screenHeight}. Game scale set to ${scale.toFixed(2)}`);
-  }, []);
-
-
   useEffect(() => {
     if (!gameStarted) {
       if (pixiAppRef.current) {
-        // console.log("GameScreen: gameStarted is false. Destroying Pixi app.");
         pixiAppRef.current.destroy(true, { children: true, texture: true, baseTexture: true });
         pixiAppRef.current = null;
         gameContainerRef.current = null;
@@ -247,18 +241,14 @@ const GameScreen: FC<GameScreenProps> = ({
         platformObjectsRef.current = [];
         lastPlatformRef.current = null;
       }
-      // No need to manage sounds here as they are cleaned up in their own effect if gameStarted becomes false.
       return;
     }
 
     if (pixiAppRef.current) { 
-      // If app exists, just ensure resize is called if needed (e.g. orientation change while game was already started)
-      // console.log("GameScreen: Pixi app already exists. Calling handleResize.");
       handleResize(); 
       return;
     }
     
-    // console.log("GameScreen: gameStarted is true. Initializing Pixi app.");
     if (PIXI.TextureSource && PIXI.SCALE_MODES) {
         PIXI.TextureSource.defaultOptions.scaleMode = PIXI.SCALE_MODES.NEAREST;
     }
@@ -268,58 +258,45 @@ const GameScreen: FC<GameScreenProps> = ({
 
     (async () => {
       await app.init({
-        backgroundAlpha: 0, // Transparent background for Pixi canvas
+        backgroundAlpha: 0, 
         resizeTo: pixiContainerRef.current!, 
-        antialias: false, // For pixelated look
+        antialias: false, 
       });
 
       if (pixiContainerRef.current) {
-        // Clear any previous canvas if it exists (e.g., from HMR or error states)
         while (pixiContainerRef.current.firstChild) {
           pixiContainerRef.current.removeChild(pixiContainerRef.current.firstChild);
         }
         pixiContainerRef.current.appendChild(app.view as HTMLCanvasElement);
-        // console.log("GameScreen: Pixi app initialized and canvas appended.");
       }
       pixiAppRef.current = app;
 
       const gameContainer = new PIXI.Container();
       app.stage.addChild(gameContainer);
       gameContainerRef.current = gameContainer;
-      // console.log("GameScreen: Game container created and added to stage.");
 
-      // Initialize sounds if they haven't been already (or if they were cleared)
       if (!jumpSoundRef.current) jumpSoundRef.current = new Audio('/sounds/jump.wav');
       if (!deathSoundRef.current) deathSoundRef.current = new Audio('/sounds/death.wav');
       if (!winSoundRef.current) winSoundRef.current = new Audio('/sounds/win.wav');
       
-      // Set initial level start time if level data is already present (e.g. manual generation)
       if ( (levelId > 0 || (levelId === 0 && parsedData)) && !levelStartTimeRef.current ) { 
-        // console.log("GameScreen: Setting initial levelStartTimeRef for levelId:", levelId);
         levelStartTimeRef.current = Date.now();
       }
 
       if (pixiContainerRef.current) {
-        // console.log("GameScreen: Initial resize and setting up ResizeObserver.");
-        handleResize(); // Initial scale and centering
+        handleResize(); 
         resizeObserver = new ResizeObserver(handleResize);
         resizeObserver.observe(pixiContainerRef.current);
       }
     })();
 
     return () => {
-      // console.log("GameScreen: Cleanup effect for gameStarted triggered.");
       if (resizeObserver && pixiContainerRef.current) {
-        // console.log("GameScreen: Unobserving ResizeObserver.");
         resizeObserver.unobserve(pixiContainerRef.current);
       }
       resizeObserver = null;
-
-      // Sound objects are global to GameScreen lifecycle, don't null them here
-      // unless GameScreen itself is unmounting, which is handled by gameStarted = false branch.
-
+      // Sound refs are not nulled here, handled by the separate effect.
       if (pixiAppRef.current) {
-        // console.log("GameScreen: Destroying Pixi app in cleanup.");
         pixiAppRef.current.destroy(true, { children: true, texture: true, baseTexture: true });
         pixiAppRef.current = null;
         gameContainerRef.current = null;
@@ -328,11 +305,10 @@ const GameScreen: FC<GameScreenProps> = ({
         lastPlatformRef.current = null;
       }
     };
-  }, [gameStarted, handleResize, parsedData, levelId]); // Added parsedData and levelId to ensure startTimeRef is set if data is ready
+  }, [gameStarted, handleResize]); 
 
 
   useEffect(() => {
-    // Separate effect for sound cleanup when game truly stops
     if (!gameStarted) {
         if (jumpSoundRef.current) { jumpSoundRef.current.pause(); jumpSoundRef.current = null; }
         if (deathSoundRef.current) { deathSoundRef.current.pause(); deathSoundRef.current = null; }
@@ -342,20 +318,28 @@ const GameScreen: FC<GameScreenProps> = ({
 
 
   useEffect(() => {
-    if (!gameStarted || !pixiAppRef.current || !gameContainerRef.current || !parsedData) {
-      // console.log("GameScreen (Level Load): Conditions not met for loading level into Pixi. gameStarted:", gameStarted, "pixiApp:", !!pixiAppRef.current, "gameContainer:", !!gameContainerRef.current, "parsedData:", !!parsedData);
-      if (gameContainerRef.current) gameContainerRef.current.removeChildren();
+    const app = pixiAppRef.current;
+    const gameContainer = gameContainerRef.current;
+
+    if (!gameStarted || !app || !gameContainer ) {
+      if (gameContainer) gameContainer.removeChildren();
       platformObjectsRef.current = [];
       lastPlatformRef.current = null;
       if (playerRef.current?.sprite) playerRef.current.sprite.visible = false;
       return;
     }
+
+    if (!parsedData) { 
+      if (gameContainer) gameContainer.removeChildren();
+      platformObjectsRef.current = [];
+      lastPlatformRef.current = null;
+      if (playerRef.current?.sprite) playerRef.current.sprite.visible = false;
+      // console.log("GameScreen (Level Load): parsedData is null. Cleared game elements.");
+      return;
+    }
+    
     // console.log("GameScreen (Level Load): Loading level data into Pixi for levelId:", levelId);
-
-    const app = pixiAppRef.current;
-    const gameContainer = gameContainerRef.current;
-
-    gameContainer.removeChildren(); // Clear previous level elements
+    gameContainer.removeChildren(); 
     platformObjectsRef.current = [];
     lastPlatformRef.current = null;
 
@@ -413,19 +397,17 @@ const GameScreen: FC<GameScreenProps> = ({
               }
           });
           lastPlatformRef.current = rightmostPlatformCandidate;
-          // if (lastPlatformRef.current) console.log("GameScreen (Level Load): Last platform identified at x:", lastPlatformRef.current.initialX);
       }
 
-      // Player setup or reset
+      let startX = 50, startY = 100;
+      if (platformObjectsRef.current.length > 0) {
+          const firstPlatform = platformObjectsRef.current.find(p => p.type === 'standard' || !p.type) || platformObjectsRef.current[0];
+          startX = firstPlatform.sprite.x + firstPlatform.width / 2 - PLAYER_WIDTH / 2;
+          startY = firstPlatform.sprite.y - PLAYER_HEIGHT;
+      }
+
       if (!playerRef.current || !playerRef.current.sprite.parent) { 
-          // console.log("GameScreen (Level Load): Creating new player sprite.");
           const playerSprite = new PIXI.Graphics();
-          let startX = 50, startY = 100;
-          if (platformObjectsRef.current.length > 0) {
-              const firstPlatform = platformObjectsRef.current.find(p => p.type === 'standard' || !p.type) || platformObjectsRef.current[0];
-              startX = firstPlatform.sprite.x + firstPlatform.width / 2 - PLAYER_WIDTH / 2;
-              startY = firstPlatform.sprite.y - PLAYER_HEIGHT;
-          }
           playerRef.current = {
               sprite: playerSprite, x: startX, y: startY, vx: 0, vy: 0,
               isJumping: false, isCrouching: false, onGround: false,
@@ -435,35 +417,27 @@ const GameScreen: FC<GameScreenProps> = ({
           playerSprite.x = playerRef.current.x; playerSprite.y = playerRef.current.y;
           gameContainer.addChild(playerSprite);
       } else { 
-          // console.log("GameScreen (Level Load): Resetting existing player position.");
-           if (platformObjectsRef.current.length > 0) {
-              const firstPlatform = platformObjectsRef.current.find(p => p.type === 'standard' || !p.type) || platformObjectsRef.current[0];
-              playerRef.current.x = firstPlatform.sprite.x + firstPlatform.width / 2 - playerRef.current.width / 2;
-              playerRef.current.y = firstPlatform.sprite.y - playerRef.current.height;
-          } else {
-              playerRef.current.x = 50; playerRef.current.y = 100;
-          }
+          playerRef.current.x = startX;
+          playerRef.current.y = startY;
           playerRef.current.sprite.x = playerRef.current.x; playerRef.current.sprite.y = playerRef.current.y;
           playerRef.current.vx = 0; playerRef.current.vy = 0; playerRef.current.onGround = false;
-          playerRef.current.isJumping = false; playerRef.current.height = PLAYER_HEIGHT; // Ensure player is not stuck crouching
+          playerRef.current.isJumping = false; playerRef.current.height = PLAYER_HEIGHT; 
           playerRef.current.isCrouching = false; playerRef.current.standingOnPlatform = null;
           playerRef.current.sprite.visible = true; 
       }
-      // console.log("GameScreen (Level Load): Player setup complete. Position x:", playerRef.current.x, "y:", playerRef.current.y);
 
-      // Initialize camera for the new level
-      if (playerRef.current && gameContainer && app && app.screen.width > 0 && app.screen.height > 0) {
+      if (playerRef.current && gameContainer && app && app.renderer) {
         gameContainer.pivot.x = playerRef.current.x + playerRef.current.width / 2;
         gameContainer.pivot.y = playerRef.current.y + playerRef.current.height / 2;
-        gameContainer.x = app.screen.width / 2;
-        gameContainer.y = app.screen.height / 2;
-        // console.log("GameScreen (Level Load): Initial camera pivot and position set.");
+        if (app.screen.width > 0 && app.screen.height > 0) {
+          gameContainer.x = app.screen.width / 2;
+          gameContainer.y = app.screen.height / 2;
+        }
       }
-      handleResize(); // Ensure scale is correct after elements are added
+      handleResize(); 
     } else { 
-      // console.log("GameScreen (Level Load): No platforms in parsedData. Hiding player if exists.");
       if (playerRef.current && playerRef.current.sprite) playerRef.current.sprite.visible = false;
-      handleResize(); // Still call resize to handle canvas dimensions
+      handleResize(); 
     }
   }, [parsedData, gameStarted, levelId, handleResize]); 
 
@@ -698,33 +672,43 @@ const GameScreen: FC<GameScreenProps> = ({
     }
 
     // Camera logic: follow player with lerp and pivot
-    if (app && gameContainer && gameContainer.scale.x > 0 && gameContainer.scale.y > 0) { 
+    if (app && gameContainer && player && app.screen.width > 0 && app.screen.height > 0 && gameContainer.scale.x > 0 && gameContainer.scale.y > 0) { 
         const targetPivotX = player.x + player.width / 2;
         let targetPivotY = player.y + player.height / 2;
         if (player.isCrouching) {
              targetPivotY = player.y + (PLAYER_CROUCH_HEIGHT / 2) + CROUCH_CAMERA_VIEW_ADJUST_WORLD;
         }
 
-        gameContainer.pivot.x += (targetPivotX - gameContainer.pivot.x) * CAMERA_LERP_FACTOR;
-        gameContainer.pivot.y += (targetPivotY - gameContainer.pivot.y) * CAMERA_LERP_FACTOR;
-        
-        if (Number.isFinite(gameContainer.pivot.x) && Number.isFinite(gameContainer.pivot.y)) {
-            gameContainer.x = app.screen.width / 2; 
-            gameContainer.y = app.screen.height / 2;
-        } else {
-            // console.warn("GameScreen: Invalid pivot detected, attempting to reset camera pivot.");
-            if (playerRef.current) {
-                gameContainer.pivot.x = playerRef.current.x + playerRef.current.width / 2;
-                gameContainer.pivot.y = playerRef.current.y + playerRef.current.height / 2;
+        if (!Number.isFinite(gameContainer.pivot.x) || !Number.isFinite(gameContainer.pivot.y) || 
+            !Number.isFinite(targetPivotX) || !Number.isFinite(targetPivotY)) {
+            console.error("CRITICAL: Game pivot or target pivot became NaN/Infinity.", {
+                playerX: playerRef.current?.x,
+                playerY: playerRef.current?.y,
+                currentPivotX: gameContainer.pivot.x,
+                currentPivotY: gameContainer.pivot.y,
+                targetPivotX: targetPivotX,
+                targetPivotY: targetPivotY,
+            });
+            // Attempt to recover by resetting to a known safe state
+            if (playerRef.current && Number.isFinite(playerRef.current.x) && Number.isFinite(playerRef.current.y)) {
+                 gameContainer.pivot.x = playerRef.current.x + playerRef.current.width / 2;
+                 gameContainer.pivot.y = playerRef.current.y + playerRef.current.height / 2;
             } else {
-                gameContainer.pivot.x = LOGICAL_GAME_WIDTH / 2;
-                gameContainer.pivot.y = LOGICAL_GAME_HEIGHT / 2;
+                 gameContainer.pivot.x = LOGICAL_GAME_WIDTH / 2;
+                 gameContainer.pivot.y = LOGICAL_GAME_HEIGHT / 2;
             }
-            gameContainer.x = app.screen.width / 2;
-            gameContainer.y = app.screen.height / 2;
+        } else {
+            // Normal lerping logic for pivot
+            gameContainer.pivot.x += (targetPivotX - gameContainer.pivot.x) * CAMERA_LERP_FACTOR;
+            gameContainer.pivot.y += (targetPivotY - gameContainer.pivot.y) * CAMERA_LERP_FACTOR;
         }
+        
+        // Always ensure the game container is positioned at the center of the screen
+        // This should happen regardless of pivot validity, once a safe pivot is established
+        gameContainer.x = app.screen.width / 2; 
+        gameContainer.y = app.screen.height / 2;
     }
-  }, [parsedData, onRequestNewLevel, isLoading, isPaused, gameStarted, globalVolume, levelId]); 
+  }, [parsedData, onRequestNewLevel, isLoading, isPaused, gameStarted, globalVolume, levelId, handleResize]); 
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
