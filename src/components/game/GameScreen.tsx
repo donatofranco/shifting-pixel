@@ -8,7 +8,7 @@ import type { GenerateLevelOutput, GenerateLevelInput } from '@/ai/flows/generat
 import type { ParsedLevelData, Platform as PlatformData } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from '@/components/ui/dialog'; // Added DialogTrigger
 import { Loader2, TimerIcon, PauseIcon, PlayIcon, Gamepad2, SlidersHorizontal, Volume2, ListTree, Footprints, ArrowUp, ArrowDown, ArrowLeft, ArrowRight } from 'lucide-react';
 import LevelGeneratorForm from '@/components/game/LevelGeneratorForm';
 import ControlsGuide from '@/components/game/ControlsGuide';
@@ -187,7 +187,7 @@ const GameScreen: FC<GameScreenProps> = ({
         setElapsedTime(0);
         levelStartTimeRef.current = Date.now();
         setCurrentStandingPlatformIndex(null);
-        if (currentLevelId === 0 ) { // Was previously currentLevelId === 0 || (currentLevelId === 1 && previousLevelId === 0)
+        if (currentLevelId === 0 ) { 
              setDeathCount(0);
         }
     } else if (currentLevelId === 0 && gameStarted && !parsedData) { 
@@ -222,8 +222,6 @@ const GameScreen: FC<GameScreenProps> = ({
 
     gameContainer.scale.set(scale);
     
-    // Camera logic in gameLoop will handle positioning based on pivot
-    // but ensure initial positioning is correct if player exists
     if (playerRef.current) {
         gameContainer.pivot.x = playerRef.current.x + playerRef.current.width / 2;
         let playerFocusY = playerRef.current.y + playerRef.current.height / 2;
@@ -234,10 +232,9 @@ const GameScreen: FC<GameScreenProps> = ({
         gameContainer.x = app.screen.width / 2;
         gameContainer.y = app.screen.height / 2;
     } else {
-        // Center the logical view if no player yet (e.g. initial load before player spawns)
         gameContainer.x = (screenWidth - LOGICAL_GAME_WIDTH * scale) / 2;
         gameContainer.y = (screenHeight - LOGICAL_GAME_HEIGHT * scale) / 2;
-        gameContainer.pivot.set(0,0); // Or LOGICAL_GAME_WIDTH/2, LOGICAL_GAME_HEIGHT/2 if preferred
+        gameContainer.pivot.set(0,0);
     }
 
   }, []);
@@ -260,8 +257,8 @@ const GameScreen: FC<GameScreenProps> = ({
       return;
     }
 
-    if (pixiAppRef.current) { // If app exists, just ensure resize logic is up
-      handleResize(); // Call resize in case level loaded before observer was ready
+    if (pixiAppRef.current) { 
+      handleResize(); 
       return;
     }
 
@@ -275,7 +272,7 @@ const GameScreen: FC<GameScreenProps> = ({
     (async () => {
       await app.init({
         backgroundAlpha: 0,
-        resizeTo: pixiContainerRef.current!, // PIXI will resize renderer to this
+        resizeTo: pixiContainerRef.current!, 
         antialias: false,
       });
 
@@ -297,14 +294,14 @@ const GameScreen: FC<GameScreenProps> = ({
       winSoundRef.current = new Audio('/sounds/win.wav');
       console.log("GameScreen: Audio objects created.");
 
-      if (levelId > 0 || (levelId === 0 && parsedData)) { // Ensure levelId is also checked with parsedData for initial load
+      if (levelId > 0 || (levelId === 0 && parsedData)) { 
         levelStartTimeRef.current = Date.now();
       } else {
         levelStartTimeRef.current = null;
       }
 
       if (pixiContainerRef.current) {
-        handleResize(); // Initial resize and scale
+        handleResize(); 
         resizeObserver = new ResizeObserver(handleResize);
         resizeObserver.observe(pixiContainerRef.current);
       }
@@ -332,7 +329,7 @@ const GameScreen: FC<GameScreenProps> = ({
         console.log("GameScreen: PixiJS app destroyed on cleanup.");
       }
     };
-  }, [gameStarted, handleResize, parsedData, levelId]); // Added parsedData and levelId for levelStartTimeRef logic
+  }, [gameStarted, handleResize]); 
 
 
   useEffect(() => {
@@ -341,13 +338,9 @@ const GameScreen: FC<GameScreenProps> = ({
     const app = pixiAppRef.current;
     const gameContainer = gameContainerRef.current;
 
-    // Clear previous level assets
     gameContainer.removeChildren();
     platformObjectsRef.current = [];
     lastPlatformRef.current = null;
-    // Player sprite is handled below
-
-    // Scale and position of gameContainer is handled by handleResize and gameLoop camera
 
     if (parsedData && parsedData.platforms.length > 0) {
       console.log("GameScreen: Rendering parsed level data for levelId:", levelId);
@@ -376,7 +369,7 @@ const GameScreen: FC<GameScreenProps> = ({
         };
 
         if (platformData.type === 'mobile') {
-          platformObj.moveDirectionX = 1; platformObj.moveRangeX = platformData.width > 0 ? (platformData.width * 0.8 + 20) : DEFAULT_PLATFORM_MOVE_RANGE; // Range based on platform width
+          platformObj.moveDirectionX = 1; platformObj.moveRangeX = platformData.width > 0 ? (platformData.width * 0.8 + 20) : DEFAULT_PLATFORM_MOVE_RANGE; 
         }
         if (platformData.type === 'vertical_mobile') {
           platformObj.moveDirectionY = 1; platformObj.moveRangeY = DEFAULT_PLATFORM_MOVE_RANGE;
@@ -408,8 +401,7 @@ const GameScreen: FC<GameScreenProps> = ({
           console.log("GameScreen: Last platform identified:", lastPlatformRef.current ? `Type: ${lastPlatformRef.current.type} at X:${lastPlatformRef.current.initialX}` : "None");
       }
 
-      // Player setup
-      if (!playerRef.current || !playerRef.current.sprite.parent) { // If player doesn't exist or sprite not in container
+      if (!playerRef.current || !playerRef.current.sprite.parent) { 
           const playerSprite = new PIXI.Graphics();
           let startX = 50, startY = 100;
           if (platformObjectsRef.current.length > 0) {
@@ -425,7 +417,7 @@ const GameScreen: FC<GameScreenProps> = ({
           playerSprite.rect(0, 0, playerRef.current.width, playerRef.current.height).fill(PLAYER_COLOR);
           playerSprite.x = playerRef.current.x; playerSprite.y = playerRef.current.y;
           gameContainer.addChild(playerSprite);
-      } else { // Player exists, reset its state for new level
+      } else { 
            if (platformObjectsRef.current.length > 0) {
               const firstPlatform = platformObjectsRef.current.find(p => p.type === 'standard' || !p.type) || platformObjectsRef.current[0];
               playerRef.current.x = firstPlatform.sprite.x + firstPlatform.width / 2 - playerRef.current.width / 2;
@@ -437,16 +429,14 @@ const GameScreen: FC<GameScreenProps> = ({
           playerRef.current.vx = 0; playerRef.current.vy = 0; playerRef.current.onGround = false;
           playerRef.current.isJumping = false; playerRef.current.height = PLAYER_HEIGHT;
           playerRef.current.isCrouching = false; playerRef.current.standingOnPlatform = null;
-          playerRef.current.sprite.visible = true; // Ensure visible
+          playerRef.current.sprite.visible = true; 
       }
-
-      handleResize(); // Ensure camera/scale is correct after loading assets
-
-    } else { // No platforms in parsed data
+      handleResize(); 
+    } else { 
       if (playerRef.current && playerRef.current.sprite) playerRef.current.sprite.visible = false;
-      handleResize(); // Still call resize to clear/center view
+      handleResize(); 
     }
-  }, [parsedData, gameStarted, levelId, handleResize]); // handleResize is stable due to useCallback
+  }, [parsedData, gameStarted, levelId, handleResize]); 
 
 
   const gameLoop = useCallback((delta: PIXI.TickerCallback<any>) => {
@@ -552,7 +542,7 @@ const GameScreen: FC<GameScreenProps> = ({
                 if (pSolid && checkCollision(uncrouchRect, pRect)) { canUncrouch = false; break; }
             }
             if (canUncrouch) { player.y -= heightDiff; player.height = PLAYER_HEIGHT; }
-            else { player.isCrouching = true; } // Can't uncrouch, remain crouching
+            else { player.isCrouching = true; } 
         }
     }
 
@@ -606,7 +596,7 @@ const GameScreen: FC<GameScreenProps> = ({
         const pRect = { x: pObj.sprite.x, y: pObj.sprite.y, width: pObj.width, height: pObj.height };
         const playerVRect = { x: player.x, y: player.y, width: player.width, height: player.height };
         if (checkCollision(playerVRect, pRect)) {
-            if (player.vy > 0) { // Falling
+            if (player.vy > 0) { 
                 if (prevPlayerY + player.height <= pRect.y + 1) { 
                     player.y = pRect.y - player.height; player.vy = 0; player.isJumping = false; player.onGround = true;
                     player.standingOnPlatform = pObj;
@@ -617,7 +607,7 @@ const GameScreen: FC<GameScreenProps> = ({
                         pObj.isBreaking = true; pObj.breakingTimer = BREAKABLE_PLATFORM_BREAK_DELAY;
                     }
                 }
-            } else if (player.vy < 0) { // Jumping up
+            } else if (player.vy < 0) { 
                 if (prevPlayerY >= pRect.y + pRect.height -1 ) { 
                     player.y = pRect.y + pRect.height; player.vy = 0;
                 }
@@ -625,7 +615,7 @@ const GameScreen: FC<GameScreenProps> = ({
         }
     }
 
-    if (!player.onGround && player.standingOnPlatform) { // Check if player fell off the platform they were on
+    if (!player.onGround && player.standingOnPlatform) { 
         let stillOn = false; const p = player.standingOnPlatform;
         if (!((p.type === 'timed' && !p.isVisible) || (p.type === 'breakable' && p.isBroken))) {
              const pRect = { x: p.sprite.x, y: p.sprite.y, width: p.width, height: p.height };
@@ -645,7 +635,7 @@ const GameScreen: FC<GameScreenProps> = ({
     player.sprite.x = player.x; player.sprite.y = player.y;
     player.sprite.clear(); player.sprite.rect(0, 0, player.width, player.height).fill(PLAYER_COLOR);
 
-    let gameWorldMaxY = LOGICAL_GAME_HEIGHT + 200; // Default fall boundary relative to logical height
+    let gameWorldMaxY = LOGICAL_GAME_HEIGHT + 200; 
     if (parsedData && parsedData.platforms.length > 0) {
          gameWorldMaxY = Math.max(...parsedData.platforms.map(p => p.y + DEFAULT_PLATFORM_HEIGHT)) + 200; 
     }
@@ -662,7 +652,7 @@ const GameScreen: FC<GameScreenProps> = ({
             const respawnP = platformObjectsRef.current.find(p => p.type === 'standard' || !p.type) || platformObjectsRef.current[0];
             player.x = respawnP.sprite.x + respawnP.width / 2 - player.width / 2;
             player.y = respawnP.sprite.y - PLAYER_HEIGHT;
-        } else { player.x = 50; player.y = 100; } // Fallback spawn if no platforms
+        } else { player.x = 50; player.y = 100; } 
         player.vy = 0; player.isJumping = false; player.onGround = false; player.standingOnPlatform = null;
         player.height = PLAYER_HEIGHT; player.isCrouching = false;
     }
@@ -679,7 +669,6 @@ const GameScreen: FC<GameScreenProps> = ({
       newLevelRequestedRef.current = true;
     }
 
-    // Camera logic using pivot
     if (app && gameContainer) {
         const targetPivotX = player.x + player.width / 2;
         let targetPivotY = player.y + player.height / 2;
@@ -694,7 +683,7 @@ const GameScreen: FC<GameScreenProps> = ({
         gameContainer.y = app.screen.height / 2;
     }
 
-  }, [parsedData, onRequestNewLevel, isLoading, isPaused, gameStarted, globalVolume, levelId, handleResize]); // Added handleResize as it's used for initial camera setup indirectly
+  }, [parsedData, onRequestNewLevel, isLoading, isPaused, gameStarted, globalVolume, levelId, handleResize]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -941,6 +930,3 @@ const GameScreen: FC<GameScreenProps> = ({
 };
 
 export default GameScreen;
-
-
-    
