@@ -1,3 +1,4 @@
+
 import type { Metadata, Viewport } from 'next';
 import { pressStart2P } from '@/lib/fonts';
 import './globals.css';
@@ -8,7 +9,7 @@ export const metadata: Metadata = {
   description: 'A 2D platformer with AI-generated levels.',
   manifest: '/manifest.json', // Link to the manifest file
   icons: { // Recommended for iOS PWA icons
-    apple: 'https://placehold.co/180x180.png?text=SP&font=press-start-2p',
+    apple: '/icons/icon-180x180.png',
   },
 };
 

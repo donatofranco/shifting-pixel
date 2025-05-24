@@ -1,37 +1,24 @@
+
 {
   "name": "Shifting Pixel",
   "short_name": "ShiftingPixel",
-  "description": "A 2D platformer with AI-generated levels. Navigate your pixel hero through an ever-changing world of platforms and challenges.",
+  "description": "A 2D platformer with AI-generated levels.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#230033",
   "theme_color": "#9400D3",
   "icons": [
     {
-      "src": "https://placehold.co/192x192.png?text=SP&font=press-start-2p",
+      "src": "/icons/icon-192x192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any"
+      "purpose": "any maskable"
     },
     {
-      "src": "https://placehold.co/512x512.png?text=SP&font=press-start-2p",
+      "src": "/icons/icon-512x512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "https://placehold.co/192x192.png?text=SP&font=press-start-2p",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "maskable"
-    },
-    {
-      "src": "https://placehold.co/512x512.png?text=SP&font=press-start-2p",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
+      "purpose": "any maskable"
     }
-  ],
-  "orientation": "any",
-  "prefer_related_applications": false
+  ]
 }
